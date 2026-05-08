@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Panel de Administración</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <?!= include('adminCSS'); ?>
+  </head>
+  <body class="bg-body-tertiary">
+    <div id="admin_loading" class="min-vh-100 d-flex align-items-center justify-content-center">
+      <div class="text-center">
+        <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+        <div class="text-muted small mt-2">Cargando...</div>
+      </div>
+    </div>
+
+    <div id="admin_app" class="d-none">
+      <nav class="navbar navbar-dark bg-dark bg-gradient d-lg-none sticky-top admin-topbar">
+        <div class="container-fluid">
+          <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#adminOffcanvas" aria-controls="adminOffcanvas">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <span class="navbar-brand mb-0 h1">Panel TH</span>
+          <button type="button" class="btn btn-outline-light btn-sm" onclick="window.top.location.href = window.APP_URL;">Volver</button>
+        </div>
+      </nav>
+
+      <div class="min-vh-100 d-flex flex-column flex-lg-row">
+        <?!= include('admin_Sidebar'); ?>
+        <main class="flex-grow-1">
+          <div class="container-fluid p-3 p-lg-4">
+            <?!= include('admin_SecAsistencia'); ?>
+            <?!= include('admin_SecEmpleados'); ?>
+            <?!= include('admin_SecConfig'); ?>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      window.APP_URL = '<?= ScriptApp.getService().getUrl() ?>';
+
+      function redirigirAInicio() {
+        try {
+          window.location.replace(window.APP_URL);
+          return;
+        } catch (e) {}
+        try {
+          window.location.href = window.APP_URL;
+          return;
+        } catch (e) {}
+        try {
+          window.top.location.href = window.APP_URL;
+        } catch (e) {}
+      }
+
+      function mostrarSeccionAdmin(id) {
+        const secs = ['sec_asistencia', 'sec_empleados', 'sec_configuracion'];
+        for (let i = 0; i < secs.length; i++) {
+          const el = document.getElementById(secs[i]);
+          if (el) el.classList.add('d-none');
+        }
+        const target = document.getElementById(id);
+        if (target) target.classList.remove('d-none');
+
+        try {
+          const navLinks = document.querySelectorAll('.admin-nav [data-nav]');
+          for (let i = 0; i < navLinks.length; i++) {
+            const b = navLinks[i];
+            const key = b.getAttribute('data-nav');
+            if (!key) continue;
+            if (key === id) {
+              b.classList.add('active');
+              b.classList.remove('opacity-75');
+            } else {
+              b.classList.remove('active');
+              b.classList.add('opacity-75');
+            }
+          }
+        } catch (e) {}
+      }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <?!= include('adminJS_Core'); ?>
+    <?!= include('adminJS_Asistencia'); ?>
+    <?!= include('adminJS_Empleados'); ?>
+    <?!= include('adminJS_Config'); ?>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        if (typeof verificarSesionInactividad === 'function' && verificarSesionInactividad(5 * 60 * 1000)) {
+          redirigirAInicio();
+          return;
+        }
+
+        try {
+          const raw = localStorage.getItem('sesionIngresoPersonal');
+          const u = raw ? JSON.parse(raw) : null;
+          const rol = (u && u.rol_id != null) ? u.rol_id : '';
+          const rolNum = parseInt(rol, 10);
+          if (!(rol === '2' || rolNum === 2)) {
+            redirigirAInicio();
+            return;
+          }
+        } catch (e) {
+          redirigirAInicio();
+          return;
+        }
+
+        const loading = document.getElementById('admin_loading');
+        const app = document.getElementById('admin_app');
+        if (loading) loading.classList.add('d-none');
+        if (app) app.classList.remove('d-none');
+
+        if (typeof touchActividad === 'function') touchActividad();
+        if (typeof iniciarProtectorInactividad === 'function') {
+          iniciarProtectorInactividad(function () {
+            redirigirAInicio();
+          }, 5 * 60 * 1000);
+        }
+
+        mostrarSeccionAdmin('sec_asistencia');
+      });
+    </script>
+  </body>
+</html>

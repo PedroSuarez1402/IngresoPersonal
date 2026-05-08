@@ -1,0 +1,30 @@
+<div id="seccion_login" class="vh-100 d-flex align-items-center justify-content-center bg-light">
+  <div class="card shadow-sm rounded-4 border-0" style="max-width: 420px; width: 100%;">
+    <div class="card-body p-4">
+      <h4 class="text-center mb-3">Ingreso Personal</h4>
+
+      <div class="mb-3">
+        <input type="email" id="login_correo" class="form-control" placeholder="Correo">
+        <div class="input-group mt-2">
+          <input type="password" id="login_pass" class="form-control" placeholder="Contraseña">
+          <button class="btn btn-outline-secondary" type="button" id="btn_toggle_pass" aria-label="Mostrar contraseña" aria-pressed="false">
+            <i class="bi bi-eye" id="icon_toggle_pass"></i>
+          </button>
+        </div>
+        
+      </div>
+      
+      <div id="login_error" class="alert alert-danger d-none small mb-3"></div>
+
+      <button id="btn_ingresar" class="btn btn-primary w-100" type="button" onclick="procesarLogin()">Ingresar</button>
+
+      <div class="mt-3 text-center">
+        <small class="form-text text-muted d-block">Ingresa con tu correo corporativo.</small>
+        <small class="form-text text-muted d-block">Recuerda que la contraseña es tu numero de identificación.</small>
+        <small class="form-text text-muted d-block">Si no logras ingresar, contacta con innovación.</small>
+      </div>
+    </div>
+    
+  </div>
+    
+</div>

@@ -1,0 +1,256 @@
+<script>
+  const AppConfig = {
+    reglas: [],
+    pagina: 1,
+    pageSize: 10
+  };
+
+  function cargarConfigAdmin() {
+    google.script.run
+      .withSuccessHandler(function (reglas) {
+        AppConfig.reglas = Array.isArray(reglas) ? reglas : [];
+        AppConfig.pageSize = _getPageSizeConfig_();
+        AppConfig.pagina = 1;
+        renderTablaConfigAdmin();
+      })
+      .withFailureHandler(function (e) {
+        alert((e && e.message) ? e.message : 'Error cargando configuración.');
+      })
+      .obtenerConfiguracionesAdmin();
+  }
+
+  function renderTablaConfigAdmin() {
+    const tbody = document.getElementById('tbody_config_admin');
+    if (!tbody) return;
+
+    const rowsAll = AppConfig.reglas || [];
+    const total = rowsAll.length;
+    const pageSize = _getPageSizeConfig_();
+    AppConfig.pageSize = pageSize;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (AppConfig.pagina > totalPages) AppConfig.pagina = totalPages;
+    if (AppConfig.pagina < 1) AppConfig.pagina = 1;
+    const start = (AppConfig.pagina - 1) * pageSize;
+    const end = Math.min(start + pageSize, total);
+    const rows = rowsAll.slice(start, end);
+    let html = '';
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] || {};
+      const id = (r.id == null) ? '' : r.id.toString();
+      const etapa = (r.etapa == null) ? '' : r.etapa.toString();
+      const ini = _normTimeHHMM_((r.hora_inicio == null) ? '' : r.hora_inicio.toString());
+      const fin = _normTimeHHMM_((r.hora_fin == null) ? '' : r.hora_fin.toString());
+      const ideal = _normTimeHHMM_((r.hora_ideal == null) ? '' : r.hora_ideal.toString());
+      const desc = (r.descripcion == null) ? '' : r.descripcion.toString();
+
+      html += '<tr>' +
+        '<td>' + _esc_(id) + '</td>' +
+        '<td>' + _esc_(etapa) + '</td>' +
+        '<td>' + _esc_(ini) + '</td>' +
+        '<td>' + _esc_(fin) + '</td>' +
+        '<td>' + _esc_(ideal) + '</td>' +
+        '<td class="text-muted small">' + _esc_(desc) + '</td>' +
+        '<td class="text-end">' +
+          '<button type="button" class="btn btn-sm btn-outline-primary rounded-circle" style="width:36px;height:36px;" data-action="editar" data-id="' + _escAttr_(id) + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Editar regla">' +
+            '<i class="bi bi-pencil-square"></i>' +
+          '</button>' +
+        '</td>' +
+      '</tr>';
+    }
+
+    tbody.innerHTML = html;
+    if (typeof inicializarTooltips === 'function') inicializarTooltips();
+
+    const infoEl = document.getElementById('config_page_info');
+    if (infoEl) {
+      const shown = total === 0 ? '0' : (String(start + 1) + '–' + String(end));
+      infoEl.textContent = 'Mostrando ' + shown + ' de ' + String(total);
+    }
+    const prevBtn = document.getElementById('config_prev');
+    const nextBtn = document.getElementById('config_next');
+    if (prevBtn) prevBtn.disabled = AppConfig.pagina <= 1 || total === 0;
+    if (nextBtn) nextBtn.disabled = AppConfig.pagina >= totalPages || total === 0;
+  }
+
+  function abrirModalConfigAdmin(modo, regla) {
+    const modalEl = document.getElementById('modal_config_regla');
+    if (!modalEl) return;
+
+    const isEdit = modo === 'edit';
+    const r = regla || {};
+
+    const tituloEl = document.getElementById('modal_config_titulo');
+    if (tituloEl) tituloEl.textContent = isEdit ? 'Editar Regla' : 'Nueva Regla';
+
+    const idEl = document.getElementById('config_id');
+    const etapaEl = document.getElementById('config_etapa');
+    const iniEl = document.getElementById('config_inicio');
+    const finEl = document.getElementById('config_fin');
+    const idealEl = document.getElementById('config_ideal');
+    const descEl = document.getElementById('config_descripcion');
+
+    if (idEl) idEl.value = isEdit ? ((r.id == null) ? '' : r.id.toString()) : '';
+    if (etapaEl) etapaEl.value = isEdit ? ((r.etapa == null) ? '' : r.etapa.toString()) : '';
+    if (iniEl) iniEl.value = isEdit ? _normTimeHHMM_((r.hora_inicio == null) ? '' : r.hora_inicio.toString()) : '';
+    if (finEl) finEl.value = isEdit ? _normTimeHHMM_((r.hora_fin == null) ? '' : r.hora_fin.toString()) : '';
+    if (idealEl) idealEl.value = isEdit ? _normTimeHHMM_((r.hora_ideal == null) ? '' : r.hora_ideal.toString()) : '';
+    if (descEl) descEl.value = isEdit ? ((r.descripcion == null) ? '' : r.descripcion.toString()) : '';
+
+    const btnGuardar = document.getElementById('btn_guardar_regla');
+    if (btnGuardar) {
+      btnGuardar.disabled = false;
+      btnGuardar.textContent = 'Guardar';
+    }
+
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  function cerrarModalConfigAdmin() {
+    const modalEl = document.getElementById('modal_config_regla');
+    if (!modalEl) return;
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+  }
+
+  function limpiarFormularioConfigAdmin() {
+    const form = document.getElementById('form_config_regla');
+    if (form) form.reset();
+    const idEl = document.getElementById('config_id');
+    if (idEl) idEl.value = '';
+  }
+
+  function onClickTablaConfigAdmin(e) {
+    const btn = e && e.target ? e.target.closest('button[data-action]') : null;
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const id = btn.getAttribute('data-id') || '';
+    if (action !== 'editar') return;
+
+    const r = (AppConfig.reglas || []).find(function (x) {
+      return (x && x.id != null) ? x.id.toString() === id : false;
+    });
+    abrirModalConfigAdmin('edit', r || {});
+  }
+
+  function onSubmitConfigAdmin(e) {
+    if (e) e.preventDefault();
+
+    const idEl = document.getElementById('config_id');
+    const etapaEl = document.getElementById('config_etapa');
+    const iniEl = document.getElementById('config_inicio');
+    const finEl = document.getElementById('config_fin');
+    const idealEl = document.getElementById('config_ideal');
+    const descEl = document.getElementById('config_descripcion');
+
+    const datos = {
+      id: idEl && idEl.value ? idEl.value.toString().trim() : '',
+      etapa: etapaEl && etapaEl.value ? etapaEl.value.toString().trim() : '',
+      hora_inicio: iniEl && iniEl.value ? _normTimeHHMM_(iniEl.value.toString()) : '',
+      hora_fin: finEl && finEl.value ? _normTimeHHMM_(finEl.value.toString()) : '',
+      hora_ideal: idealEl && idealEl.value ? _normTimeHHMM_(idealEl.value.toString()) : '',
+      descripcion: descEl && descEl.value ? descEl.value.toString().trim() : ''
+    };
+
+    const btnGuardar = document.getElementById('btn_guardar_regla');
+    if (btnGuardar) {
+      btnGuardar.disabled = true;
+      btnGuardar.textContent = 'Guardando...';
+    }
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || res.exito === false) {
+          if (btnGuardar) {
+            btnGuardar.disabled = false;
+            btnGuardar.textContent = 'Guardar';
+          }
+          alert((res && res.mensaje) ? res.mensaje : 'No se pudo guardar.');
+          return;
+        }
+        alert((res && res.mensaje) ? res.mensaje : 'Guardado.');
+        cerrarModalConfigAdmin();
+        limpiarFormularioConfigAdmin();
+        cargarConfigAdmin();
+      })
+      .withFailureHandler(function (err) {
+        if (btnGuardar) {
+          btnGuardar.disabled = false;
+          btnGuardar.textContent = 'Guardar';
+        }
+        alert((err && err.message) ? err.message : 'Error guardando configuración.');
+      })
+      .guardarConfiguracionAdmin(datos);
+  }
+
+  function _normTimeHHMM_(s) {
+    const raw = (s == null) ? '' : s.toString().trim();
+    const m = /^(\d{1,2}):(\d{2})/.exec(raw);
+    if (!m) return '';
+    const hh = String(Number(m[1])).padStart(2, '0');
+    const mm = String(Number(m[2])).padStart(2, '0');
+    return hh + ':' + mm;
+  }
+
+  function _escAttr_(s) {
+    return _esc_(s).replace(/"/g, '&quot;');
+  }
+
+  function _esc_(s) {
+    return (s == null ? '' : s.toString())
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function _getPageSizeConfig_() {
+    const sel = document.getElementById('config_page_size');
+    const raw = sel && sel.value ? sel.value.toString().trim() : '';
+    const n = parseInt(raw, 10);
+    return isNaN(n) || n < 1 ? 10 : n;
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const tbody = document.getElementById('tbody_config_admin');
+    if (tbody) tbody.addEventListener('click', onClickTablaConfigAdmin);
+
+    const btnNueva = document.getElementById('btn_nueva_regla');
+    if (btnNueva) {
+      btnNueva.addEventListener('click', function () {
+        limpiarFormularioConfigAdmin();
+        abrirModalConfigAdmin('new', {});
+      });
+    }
+
+    const form = document.getElementById('form_config_regla');
+    if (form) form.addEventListener('submit', onSubmitConfigAdmin);
+
+    const prevBtn = document.getElementById('config_prev');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        if (AppConfig.pagina > 1) {
+          AppConfig.pagina--;
+          renderTablaConfigAdmin();
+        }
+      });
+    }
+    const nextBtn = document.getElementById('config_next');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        AppConfig.pagina++;
+        renderTablaConfigAdmin();
+      });
+    }
+    const sizeSel = document.getElementById('config_page_size');
+    if (sizeSel) {
+      sizeSel.addEventListener('change', function () {
+        AppConfig.pagina = 1;
+        renderTablaConfigAdmin();
+      });
+    }
+
+    cargarConfigAdmin();
+  });
+</script>

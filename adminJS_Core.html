@@ -1,0 +1,79 @@
+<script>
+  function inicializarTooltips() {
+    if (!window.bootstrap || !bootstrap.Tooltip) return;
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+      var inst = bootstrap.Tooltip.getInstance(tooltipTriggerEl);
+      if (inst) inst.dispose();
+      return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+  }
+
+  function touchActividad() {
+    try {
+      localStorage.setItem('sesionIngresoPersonal_lastActivity', String(Date.now()));
+    } catch (e) {}
+  }
+
+  function limpiarSesionLocal() {
+    try {
+      localStorage.removeItem('sesionIngresoPersonal');
+      localStorage.removeItem('sesionIngresoPersonal_lastActivity');
+    } catch (e) {}
+  }
+
+  function verificarSesionInactividad(timeoutMs) {
+    var t = (timeoutMs == null) ? (5 * 60 * 1000) : Number(timeoutMs);
+    if (!t || isNaN(t)) t = 5 * 60 * 1000;
+    var rawSesion = null;
+    var rawAct = null;
+    try {
+      rawSesion = localStorage.getItem('sesionIngresoPersonal');
+      rawAct = localStorage.getItem('sesionIngresoPersonal_lastActivity');
+    } catch (e) {}
+    if (!rawSesion) return false;
+    var last = Number(rawAct || '0');
+    if (!last || isNaN(last)) {
+      limpiarSesionLocal();
+      return true;
+    }
+    if ((Date.now() - last) > t) {
+      limpiarSesionLocal();
+      return true;
+    }
+    return false;
+  }
+
+  function iniciarProtectorInactividad(onTimeout, timeoutMs) {
+    var t = (timeoutMs == null) ? (5 * 60 * 1000) : Number(timeoutMs);
+    if (!t || isNaN(t)) t = 5 * 60 * 1000;
+    var lastWrite = 0;
+
+    function touchThrottled() {
+      var now = Date.now();
+      if (now - lastWrite < 5000) return;
+      lastWrite = now;
+      touchActividad();
+    }
+
+    function tick() {
+      if (verificarSesionInactividad(t)) {
+        if (typeof onTimeout === 'function') onTimeout();
+      }
+    }
+
+    try {
+      ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach(function (evt) {
+        window.addEventListener(evt, touchThrottled, { passive: true });
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) tick();
+      });
+    } catch (e) {}
+
+    tick();
+    try {
+      window.setInterval(tick, 15000);
+    } catch (e) {}
+  }
+</script>

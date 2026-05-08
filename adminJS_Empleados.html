@@ -1,0 +1,348 @@
+<script>
+  const AppEmpleados = {
+    usuariosOriginales: [],
+    usuariosFiltrados: [],
+    pagina: 1,
+    pageSize: 10
+  };
+
+  function cargarUsuariosAdmin() {
+    google.script.run
+      .withSuccessHandler(function (usuarios) {
+        AppEmpleados.usuariosOriginales = Array.isArray(usuarios) ? usuarios : [];
+        AppEmpleados.usuariosFiltrados = AppEmpleados.usuariosOriginales.slice();
+        AppEmpleados.pageSize = _getPageSizeUsuarios_();
+        AppEmpleados.pagina = 1;
+        aplicarFiltroUsuariosAdmin();
+      })
+      .withFailureHandler(function (e) {
+        alert((e && e.message) ? e.message : 'Error cargando usuarios.');
+      })
+      .obtenerUsuariosAdmin();
+  }
+
+  function aplicarFiltroUsuariosAdmin() {
+    const qEl = document.getElementById('buscar_usuario_admin');
+    const q = qEl && qEl.value ? qEl.value.toString().trim().toLowerCase() : '';
+
+    if (!q) {
+      AppEmpleados.usuariosFiltrados = (AppEmpleados.usuariosOriginales || []).slice();
+      AppEmpleados.pagina = 1;
+      renderTablaUsuariosAdmin();
+      return;
+    }
+
+    AppEmpleados.usuariosFiltrados = (AppEmpleados.usuariosOriginales || []).filter(function (u) {
+      const id = _escText_((u && u.id != null) ? u.id : '').toLowerCase();
+      const nombre = _escText_((u && u.nombre != null) ? u.nombre : '').toLowerCase();
+      const identificacion = _escText_((u && u.identificacion != null) ? u.identificacion : '').toLowerCase();
+      const correo = _escText_((u && u.correo != null) ? u.correo : '').toLowerCase();
+      const cargo = _escText_((u && u.cargo != null) ? u.cargo : '').toLowerCase();
+      const rol = _escText_(_rolLabel_((u && u.rol_id != null) ? u.rol_id : '')).toLowerCase();
+      const estado = _escText_((u && u.estado != null) ? u.estado : '').toLowerCase();
+
+      const blob = [id, nombre, identificacion, correo, cargo, rol, estado].join(' ');
+      return blob.indexOf(q) !== -1;
+    });
+
+    AppEmpleados.pagina = 1;
+    renderTablaUsuariosAdmin();
+  }
+
+  function renderTablaUsuariosAdmin() {
+    const tbody = document.getElementById('tbody_usuarios_admin');
+    if (!tbody) return;
+
+    const rowsAll = AppEmpleados.usuariosFiltrados || [];
+    const total = rowsAll.length;
+    const pageSize = _getPageSizeUsuarios_();
+    AppEmpleados.pageSize = pageSize;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (AppEmpleados.pagina > totalPages) AppEmpleados.pagina = totalPages;
+    if (AppEmpleados.pagina < 1) AppEmpleados.pagina = 1;
+    const start = (AppEmpleados.pagina - 1) * pageSize;
+    const end = Math.min(start + pageSize, total);
+    const rows = rowsAll.slice(start, end);
+    let html = '';
+
+    for (let i = 0; i < rows.length; i++) {
+      const u = rows[i] || {};
+      const id = (u.id == null) ? '' : u.id.toString();
+      const nombre = (u.nombre == null) ? '' : u.nombre.toString();
+      const identificacion = (u.identificacion == null) ? '' : u.identificacion.toString();
+      const correo = (u.correo == null) ? '' : u.correo.toString();
+      const cargo = (u.cargo == null) ? '' : u.cargo.toString();
+      const rolId = (u.rol_id == null) ? '' : u.rol_id.toString();
+      const estado = (u.estado == null) ? '' : u.estado.toString();
+
+      const estadoNorm = estado.toLowerCase().trim();
+      const estadoBadge = _badgeEstado_(estado);
+
+      const toggleLabel = (estadoNorm === 'activo') ? 'Desactivar' : 'Activar';
+      const nuevoEstado = (estadoNorm === 'activo') ? 'Inactivo' : 'Activo';
+      const toggleCls = (estadoNorm === 'activo') ? 'btn-outline-danger' : 'btn-outline-success';
+      const toggleIcon = (estadoNorm === 'activo') ? '<i class="bi bi-person-x-fill"></i>' : '<i class="bi bi-person-check-fill"></i>';
+      const toggleTitle = (estadoNorm === 'activo') ? 'Desactivar usuario' : 'Activar usuario';
+
+      html += '<tr>' +
+        '<td>' + _esc_(id) + '</td>' +
+        '<td>' + _esc_(nombre) + '</td>' +
+        '<td>' + _esc_(identificacion) + '</td>' +
+        '<td>' + _esc_(correo) + '</td>' +
+        '<td>' + _esc_(cargo) + '</td>' +
+        '<td>' + _esc_(_rolLabel_(rolId)) + '</td>' +
+        '<td>' + estadoBadge + '</td>' +
+        '<td class="text-end">' +
+          '<div class="d-inline-flex gap-2">' +
+            '<button type="button" class="btn btn-sm btn-outline-primary rounded-circle" style="width:36px;height:36px;" data-action="editar" data-id="' + _escAttr_(id) + '" data-bs-toggle="tooltip" data-bs-placement="top" title="Editar">' +
+              '<i class="bi bi-pencil-square"></i>' +
+            '</button>' +
+            '<button type="button" class="btn btn-sm ' + toggleCls + ' rounded-circle" style="width:36px;height:36px;" data-action="toggle" data-id="' + _escAttr_(id) + '" data-nuevo-estado="' + _escAttr_(nuevoEstado) + '" data-bs-toggle="tooltip" data-bs-placement="top" title="' + _escAttr_(toggleTitle) + '">' +
+              toggleIcon +
+            '</button>' +
+          '</div>' +
+        '</td>' +
+      '</tr>';
+    }
+
+    tbody.innerHTML = html;
+    if (typeof inicializarTooltips === 'function') inicializarTooltips();
+
+    const infoEl = document.getElementById('usuarios_page_info');
+    if (infoEl) {
+      const shown = total === 0 ? '0' : (String(start + 1) + '–' + String(end));
+      infoEl.textContent = 'Mostrando ' + shown + ' de ' + String(total);
+    }
+    const prevBtn = document.getElementById('usuarios_prev');
+    const nextBtn = document.getElementById('usuarios_next');
+    if (prevBtn) prevBtn.disabled = AppEmpleados.pagina <= 1 || total === 0;
+    if (nextBtn) nextBtn.disabled = AppEmpleados.pagina >= totalPages || total === 0;
+  }
+
+  function abrirModalUsuarioAdmin(modo, usuario) {
+    const modalEl = document.getElementById('modal_usuario_admin');
+    if (!modalEl) return;
+
+    const tituloEl = document.getElementById('modal_usuario_titulo');
+    const idEl = document.getElementById('usuario_id');
+    const correoEl = document.getElementById('usuario_correo');
+    const nombreEl = document.getElementById('usuario_nombre');
+    const identificacionEl = document.getElementById('usuario_identificacion');
+    const passEl = document.getElementById('usuario_password');
+    const cargoEl = document.getElementById('usuario_cargo');
+    const rolEl = document.getElementById('usuario_rol_id');
+
+    const u = usuario || {};
+    const isEdit = modo === 'edit';
+    if (tituloEl) tituloEl.textContent = isEdit ? 'Editar Usuario' : 'Nuevo Usuario';
+
+    if (idEl) idEl.value = isEdit ? ((u.id == null) ? '' : u.id.toString()) : '';
+    if (correoEl) correoEl.value = isEdit ? ((u.correo == null) ? '' : u.correo.toString()) : '';
+    if (nombreEl) nombreEl.value = isEdit ? ((u.nombre == null) ? '' : u.nombre.toString()) : '';
+    if (identificacionEl) identificacionEl.value = isEdit ? ((u.identificacion == null) ? '' : u.identificacion.toString()) : '';
+    if (passEl) passEl.value = '';
+    if (cargoEl) cargoEl.value = isEdit ? ((u.cargo == null) ? '' : u.cargo.toString()) : '';
+    if (rolEl) rolEl.value = isEdit ? (((u.rol_id == null) ? '1' : u.rol_id.toString()) || '1') : '1';
+
+    const btnGuardar = document.getElementById('btn_guardar_usuario');
+    if (btnGuardar) {
+      btnGuardar.disabled = false;
+      btnGuardar.textContent = 'Guardar';
+    }
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+  }
+
+  function cerrarModalUsuarioAdmin() {
+    const modalEl = document.getElementById('modal_usuario_admin');
+    if (!modalEl) return;
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+  }
+
+  function limpiarFormularioUsuarioAdmin() {
+    const form = document.getElementById('form_usuario_admin');
+    if (form) form.reset();
+    const idEl = document.getElementById('usuario_id');
+    if (idEl) idEl.value = '';
+    const passEl = document.getElementById('usuario_password');
+    if (passEl) passEl.value = '';
+  }
+
+  function onClickTablaUsuariosAdmin(e) {
+    const btn = e && e.target ? e.target.closest('button[data-action]') : null;
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const id = btn.getAttribute('data-id') || '';
+
+    if (action === 'editar') {
+      const u = (AppEmpleados.usuariosOriginales || []).find(function (x) {
+        return (x && x.id != null) ? x.id.toString() === id : false;
+      });
+      abrirModalUsuarioAdmin('edit', u || {});
+      return;
+    }
+
+    if (action === 'toggle') {
+      const nuevoEstado = btn.getAttribute('data-nuevo-estado') || '';
+      const verbo = (nuevoEstado.toLowerCase().trim() === 'activo') ? 'activar' : 'desactivar';
+      if (!confirm('¿Deseas ' + verbo + ' este usuario?')) return;
+
+      google.script.run
+        .withSuccessHandler(function () {
+          cargarUsuariosAdmin();
+        })
+        .withFailureHandler(function (err) {
+          alert((err && err.message) ? err.message : 'Error actualizando estado.');
+        })
+        .cambiarEstadoUsuarioAdmin(id, nuevoEstado);
+    }
+  }
+
+  function onSubmitUsuarioAdmin(e) {
+    if (e) e.preventDefault();
+
+    const idEl = document.getElementById('usuario_id');
+    const correoEl = document.getElementById('usuario_correo');
+    const nombreEl = document.getElementById('usuario_nombre');
+    const identificacionEl = document.getElementById('usuario_identificacion');
+    const passEl = document.getElementById('usuario_password');
+    const cargoEl = document.getElementById('usuario_cargo');
+    const rolEl = document.getElementById('usuario_rol_id');
+
+    const datos = {
+      id: idEl && idEl.value ? idEl.value.toString().trim() : '',
+      correo: correoEl && correoEl.value ? correoEl.value.toString().trim() : '',
+      nombre: nombreEl && nombreEl.value ? nombreEl.value.toString().trim() : '',
+      identificacion: identificacionEl && identificacionEl.value ? identificacionEl.value.toString().trim() : '',
+      password: passEl && passEl.value ? passEl.value.toString().trim() : '',
+      cargo: cargoEl && cargoEl.value ? cargoEl.value.toString().trim() : '',
+      rol_id: rolEl && rolEl.value ? rolEl.value.toString().trim() : ''
+    };
+
+    const btnGuardar = document.getElementById('btn_guardar_usuario');
+    if (btnGuardar) {
+      btnGuardar.disabled = true;
+      btnGuardar.textContent = 'Guardando...';
+    }
+
+    google.script.run
+      .withSuccessHandler(function () {
+        cerrarModalUsuarioAdmin();
+        limpiarFormularioUsuarioAdmin();
+        cargarUsuariosAdmin();
+      })
+      .withFailureHandler(function (err) {
+        if (btnGuardar) {
+          btnGuardar.disabled = false;
+          btnGuardar.textContent = 'Guardar';
+        }
+        alert((err && err.message) ? err.message : 'Error guardando usuario.');
+      })
+      .guardarUsuarioAdmin(datos);
+  }
+
+  function _rolLabel_(rolId) {
+    const s = (rolId == null) ? '' : rolId.toString().trim();
+    const n = parseInt(s, 10);
+    if (s === '2' || n === 2) return 'TH';
+    return 'Usuario';
+  }
+
+  function _badgeEstado_(estado) {
+    const raw = (estado == null) ? '' : estado.toString();
+    const norm = raw.toLowerCase().trim();
+    let cls = 'text-bg-secondary';
+    if (norm === 'activo') cls = 'text-bg-success';
+    if (norm === 'inactivo') cls = 'text-bg-danger';
+    return '<span class="badge ' + cls + '">' + _esc_(raw) + '</span>';
+  }
+
+  function _escText_(s) {
+    return (s == null ? '' : s.toString()).replace(/\s+/g, ' ').trim();
+  }
+
+  function _escAttr_(s) {
+    return _esc_(s).replace(/"/g, '&quot;');
+  }
+
+  function _esc_(s) {
+    return (s == null ? '' : s.toString())
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function _getPageSizeUsuarios_() {
+    const sel = document.getElementById('usuarios_page_size');
+    const raw = sel && sel.value ? sel.value.toString().trim() : '';
+    const n = parseInt(raw, 10);
+    return isNaN(n) || n < 1 ? 10 : n;
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const qEl = document.getElementById('buscar_usuario_admin');
+    if (qEl) {
+      qEl.addEventListener('input', function () {
+        aplicarFiltroUsuariosAdmin();
+      });
+    }
+
+    const tbody = document.getElementById('tbody_usuarios_admin');
+    if (tbody) tbody.addEventListener('click', onClickTablaUsuariosAdmin);
+
+    const btnNuevo = document.getElementById('btn_nuevo_usuario');
+    if (btnNuevo) {
+      btnNuevo.addEventListener('click', function () {
+        limpiarFormularioUsuarioAdmin();
+        abrirModalUsuarioAdmin('new', {});
+      });
+    }
+
+    const form = document.getElementById('form_usuario_admin');
+    if (form) form.addEventListener('submit', onSubmitUsuarioAdmin);
+
+    const passEl = document.getElementById('usuario_password');
+    const btnToggle = document.getElementById('btn_toggle_pass_admin');
+    const iconToggle = document.getElementById('icon_toggle_pass_admin');
+    if (btnToggle && passEl) {
+      btnToggle.addEventListener('click', function () {
+        const isPassword = passEl.getAttribute('type') === 'password';
+        passEl.setAttribute('type', isPassword ? 'text' : 'password');
+        btnToggle.setAttribute('aria-pressed', isPassword ? 'true' : 'false');
+        btnToggle.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+        if (iconToggle) iconToggle.className = isPassword ? 'bi bi-eye-slash' : 'bi bi-eye';
+        passEl.focus();
+      });
+    }
+
+    const prevBtn = document.getElementById('usuarios_prev');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        if (AppEmpleados.pagina > 1) {
+          AppEmpleados.pagina--;
+          renderTablaUsuariosAdmin();
+        }
+      });
+    }
+    const nextBtn = document.getElementById('usuarios_next');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        AppEmpleados.pagina++;
+        renderTablaUsuariosAdmin();
+      });
+    }
+    const sizeSel = document.getElementById('usuarios_page_size');
+    if (sizeSel) {
+      sizeSel.addEventListener('change', function () {
+        AppEmpleados.pagina = 1;
+        renderTablaUsuariosAdmin();
+      });
+    }
+
+    cargarUsuariosAdmin();
+  });
+</script>

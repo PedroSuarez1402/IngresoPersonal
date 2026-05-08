@@ -1,0 +1,55 @@
+<div class="offcanvas offcanvas-start text-bg-dark bg-gradient admin-offcanvas d-lg-none" tabindex="-1" id="adminOffcanvas" aria-labelledby="adminOffcanvasLabel">
+  <div class="offcanvas-header border-bottom border-secondary-subtle">
+    <div>
+      <div id="adminOffcanvasLabel" class="fw-semibold">Talento Humano</div>
+      <div class="small text-white-50">Panel de Control</div>
+    </div>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+  </div>
+  <div class="offcanvas-body d-flex flex-column">
+    <div class="admin-nav nav nav-pills flex-column gap-1">
+      <button type="button" class="nav-link text-start text-white active" data-nav="sec_asistencia" data-bs-dismiss="offcanvas" onclick="mostrarSeccionAdmin('sec_asistencia')">
+        <i class="bi bi-clock-history me-2"></i>Asistencia
+      </button>
+      <button type="button" class="nav-link text-start text-white opacity-75" data-nav="sec_empleados" data-bs-dismiss="offcanvas" onclick="mostrarSeccionAdmin('sec_empleados')">
+        <i class="bi bi-people me-2"></i>Usuarios
+      </button>
+      <button type="button" class="nav-link text-start text-white opacity-75" data-nav="sec_configuracion" data-bs-dismiss="offcanvas" onclick="mostrarSeccionAdmin('sec_configuracion')">
+        <i class="bi bi-sliders me-2"></i>Horarios
+      </button>
+    </div>
+
+    <div class="mt-auto pt-3 border-top border-secondary-subtle">
+      <button type="button" class="btn btn-outline-light w-100" onclick="window.top.location.href = window.APP_URL;">
+        <i class="bi bi-box-arrow-left me-2"></i>Volver al Menú
+      </button>
+    </div>
+  </div>
+</div>
+
+<aside class="d-none d-lg-flex flex-column flex-shrink-0 text-bg-dark bg-gradient admin-sidebar border-end border-black border-opacity-10 vh-100 sticky-top">
+  <div class="p-3 border-bottom border-secondary-subtle">
+    <div class="fw-semibold">Talento Humano</div>
+    <div class="small text-white-50">Panel de Control</div>
+  </div>
+
+  <div class="p-3">
+    <div class="admin-nav nav nav-pills flex-column gap-1">
+      <button type="button" class="nav-link text-start text-white active" data-nav="sec_asistencia" onclick="mostrarSeccionAdmin('sec_asistencia')">
+        <i class="bi bi-clock-history me-2"></i>Asistencia
+      </button>
+      <button type="button" class="nav-link text-start text-white opacity-75" data-nav="sec_empleados" onclick="mostrarSeccionAdmin('sec_empleados')">
+        <i class="bi bi-people me-2"></i>Usuarios
+      </button>
+      <button type="button" class="nav-link text-start text-white opacity-75" data-nav="sec_configuracion" onclick="mostrarSeccionAdmin('sec_configuracion')">
+        <i class="bi bi-sliders me-2"></i>Horarios
+      </button>
+    </div>
+  </div>
+
+  <div class="mt-auto p-3 border-top border-secondary-subtle">
+    <button type="button" class="btn btn-outline-light w-100" onclick="window.top.location.href = window.APP_URL;">
+      <i class="bi bi-box-arrow-left me-2"></i>Volver al Menú
+    </button>
+  </div>
+</aside>

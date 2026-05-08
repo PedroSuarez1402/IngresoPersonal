@@ -1,0 +1,207 @@
+<script>
+  function mostrarToast(mensaje, tipo) {
+    const container = document.getElementById('toast_container');
+    if (!container || !window.bootstrap) return;
+
+    const t = (tipo || '').toString().toLowerCase();
+    let cls = 'text-bg-secondary';
+    if (t === 'success') cls = 'text-bg-success';
+    if (t === 'danger' || t === 'error') cls = 'text-bg-danger';
+    if (t === 'warning') cls = 'text-bg-warning';
+    if (t === 'info') cls = 'text-bg-info';
+
+    const el = document.createElement('div');
+    el.className = 'toast align-items-center border-0 shadow-sm ' + cls;
+    el.setAttribute('role', 'alert');
+    el.setAttribute('aria-live', 'assertive');
+    el.setAttribute('aria-atomic', 'true');
+    el.innerHTML =
+      '<div class="d-flex">' +
+        '<div class="toast-body">' + _escToast_(mensaje) + '</div>' +
+        '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Cerrar"></button>' +
+      '</div>';
+
+    container.appendChild(el);
+    const toast = bootstrap.Toast.getOrCreateInstance(el, { delay: 2500 });
+    el.addEventListener('hidden.bs.toast', function () {
+      try { el.remove(); } catch (e) {}
+    });
+    toast.show();
+  }
+
+  function _escToast_(s) {
+    return (s == null ? '' : s.toString())
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function abrirModalAsistencia() {
+    const modalEl = document.getElementById('modalAsistencia');
+    if (!modalEl || !window.bootstrap) return;
+
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+    const sel = document.getElementById('select_tipo_marcacion');
+    if (sel) {
+      sel.value = '';
+      _cargarConfigHorariosSiFalta_(function () {
+        _aplicarRestriccionesCliente_(sel);
+      });
+    }
+
+    const btn = document.getElementById('btn_registrar_reloj');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Registrar Marcación';
+      btn.onclick = enviarMarcacionManual;
+    }
+  }
+
+  function enviarMarcacionManual() {
+    const btn = document.getElementById('btn_registrar_reloj');
+    const sel = document.getElementById('select_tipo_marcacion');
+
+    let tipo = sel ? sel.value : '';
+    tipo = (tipo || '').toString().trim();
+
+    if (!tipo) {
+      mostrarToast('Selecciona un tipo de marcación.', 'warning');
+      return;
+    }
+
+    if (tipo === 'Salida Final' && _esAntesDeHoraMinimaSalidaFinalCliente_()) {
+      if (sel) sel.value = 'Salida por Permiso';
+      mostrarToast('Antes de las 5:30 PM no puedes registrar "Salida Final". Si necesitas salir, selecciona "Salida por Permiso".', 'warning');
+      return;
+    }
+
+    if (tipo === 'Salida Almuerzo' && _fueraDeRangoSalidaAlmuerzoCliente_()) {
+      if (sel) sel.value = 'Salida por Permiso';
+      mostrarToast('No puedes salir a almorzar a esta hora según el horario laboral. Por favor selecciona "Salida por Permiso".', 'warning');
+      return;
+    }
+
+    if (!window.UsuarioActual || !window.UsuarioActual.id) {
+      mostrarToast('Sesión no válida. Vuelve a iniciar sesión.', 'danger');
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+    }
+
+    google.script.run
+      .withSuccessHandler(respuestaMarcacion)
+      .withFailureHandler(function (e) {
+        mostrarToast((e && e.message) ? e.message : 'Error al registrar.', 'danger');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Registrar Marcación';
+        }
+      })
+      .registrarAsistenciaManual(window.UsuarioActual.id, window.UsuarioActual.nombre, tipo);
+  }
+
+  function respuestaMarcacion(res) {
+    const btn = document.getElementById('btn_registrar_reloj');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Registrar Marcación';
+    }
+
+    const ok = !!(res && res.exito !== false);
+    const msg = (res && res.mensaje) ? res.mensaje : (ok ? 'Operación completada.' : 'No se pudo completar la operación.');
+    mostrarToast(msg, ok ? 'success' : 'danger');
+    if (!ok) return;
+
+    const modalEl = document.getElementById('modalAsistencia');
+    if (modalEl && window.bootstrap) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+    }
+  }
+
+  function _esAntesDeHoraMinimaSalidaFinalCliente_() {
+    const cfg = (window.ConfigHorarios && window.ConfigHorarios['Salida Final']) ? window.ConfigHorarios['Salida Final'] : null;
+    const ideal = cfg && cfg.ideal ? _parseHHMM_(cfg.ideal) : (17 * 60 + 30);
+    const mins = _minutesBogotaCliente_();
+    return mins !== null && mins < ideal;
+  }
+
+  function _esAntesDeHoraMinimaSalidaAlmuerzoCliente_() {
+    const cfg = (window.ConfigHorarios && window.ConfigHorarios['Salida Almuerzo']) ? window.ConfigHorarios['Salida Almuerzo'] : null;
+    const ideal = cfg && cfg.ideal ? _parseHHMM_(cfg.ideal) : (12 * 60 + 30);
+    const mins = _minutesBogotaCliente_();
+    return mins !== null && ideal !== null && mins < ideal;
+  }
+
+  function _fueraDeRangoSalidaAlmuerzoCliente_() {
+    const cfg = (window.ConfigHorarios && window.ConfigHorarios['Salida Almuerzo']) ? window.ConfigHorarios['Salida Almuerzo'] : null;
+    const ideal = cfg && cfg.ideal ? _parseHHMM_(cfg.ideal) : (12 * 60 + 30);
+    const fin = cfg && cfg.fin ? _parseHHMM_(cfg.fin) : (14 * 60);
+    const mins = _minutesBogotaCliente_();
+    if (mins === null || ideal === null || fin === null) return false;
+    return mins < ideal || mins > fin;
+  }
+
+  function _aplicarRestriccionesCliente_(selectEl) {
+    if (!selectEl) return;
+    const opts = selectEl.querySelectorAll('option');
+    let salidaFinalOpt = null;
+    let salidaAlmOpt = null;
+    for (let i = 0; i < opts.length; i++) {
+      const v = (opts[i].value || '').toString();
+      if (v === 'Salida Final') salidaFinalOpt = opts[i];
+      if (v === 'Salida Almuerzo') salidaAlmOpt = opts[i];
+    }
+    if (salidaFinalOpt) salidaFinalOpt.disabled = _esAntesDeHoraMinimaSalidaFinalCliente_();
+    if (salidaAlmOpt) salidaAlmOpt.disabled = _fueraDeRangoSalidaAlmuerzoCliente_();
+  }
+
+  function _minutesBogotaCliente_() {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false });
+      const parts = fmt.formatToParts(new Date());
+      let hh = null;
+      let mm = null;
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i].type === 'hour') hh = Number(parts[i].value);
+        if (parts[i].type === 'minute') mm = Number(parts[i].value);
+      }
+      if (hh == null || mm == null || isNaN(hh) || isNaN(mm)) return null;
+      return hh * 60 + mm;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function _parseHHMM_(s) {
+    const raw = (s == null) ? '' : s.toString().trim().replace(/^'/, '');
+    const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
+    if (!m) return null;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (isNaN(hh) || isNaN(mm)) return null;
+    return hh * 60 + mm;
+  }
+
+  function _cargarConfigHorariosSiFalta_(cb) {
+    if (window.ConfigHorarios) {
+      if (typeof cb === 'function') cb();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (cfg) {
+        window.ConfigHorarios = (cfg && typeof cfg === 'object') ? cfg : {};
+        if (typeof cb === 'function') cb();
+      })
+      .withFailureHandler(function () {
+        window.ConfigHorarios = {};
+        if (typeof cb === 'function') cb();
+      })
+      .obtenerConfigHorariosPublico();
+  }
+</script>

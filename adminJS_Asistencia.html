@@ -1,0 +1,300 @@
+<script>
+  const AppAsistencia = {
+    registrosOriginales: [],
+    registrosFiltrados: [],
+    pagina: 1,
+    pageSize: 10,
+    defaultHoyAplicado: false
+  };
+
+  function cargarAsistenciaAdmin() {
+    google.script.run
+      .withSuccessHandler(function (registros) {
+        AppAsistencia.registrosOriginales = Array.isArray(registros) ? registros : [];
+        AppAsistencia.registrosFiltrados = AppAsistencia.registrosOriginales.slice();
+        AppAsistencia.pageSize = _getPageSizeAsistencia_();
+        AppAsistencia.pagina = 1;
+        _aplicarFiltroHoyPorDefecto_();
+        _poblarFiltrosAsistencia_();
+        aplicarFiltrosAsistencia();
+      })
+      .withFailureHandler(function (e) {
+        alert((e && e.message) ? e.message : 'Error cargando asistencia.');
+      })
+      .obtenerRegistrosAsistenciaAdmin();
+  }
+
+  function aplicarFiltrosAsistencia() {
+    const desdeEl = document.getElementById('filtro_fecha_desde');
+    const hastaEl = document.getElementById('filtro_fecha_hasta');
+    const nombreEl = document.getElementById('filtro_nombre');
+    const tipoEl = document.getElementById('filtro_tipo');
+    const categoriaEl = document.getElementById('filtro_categoria');
+
+    const desde = desdeEl && desdeEl.value ? desdeEl.value : '';
+    const hasta = hastaEl && hastaEl.value ? hastaEl.value : '';
+    const q = nombreEl && nombreEl.value ? nombreEl.value.toString().trim().toLowerCase() : '';
+    const tipoSel = tipoEl && tipoEl.value ? tipoEl.value.toString().trim().toLowerCase() : '';
+    const categoriaSelRaw = categoriaEl && categoriaEl.value ? categoriaEl.value.toString().trim() : '';
+    const categoriaSel = categoriaSelRaw ? categoriaSelRaw.toLowerCase() : '';
+
+    const dDesde = desde ? _dateFromYMD_(desde) : null;
+    const dHasta = hasta ? _dateFromYMD_(hasta) : null;
+
+    AppAsistencia.registrosFiltrados = (AppAsistencia.registrosOriginales || []).filter(function (r) {
+      const nombre = (r && r.nombre != null) ? r.nombre.toString().toLowerCase() : '';
+      if (q && nombre.indexOf(q) === -1) return false;
+
+      const tipo = (r && r.tipo != null) ? r.tipo.toString().trim().toLowerCase() : '';
+      if (tipoSel && tipo !== tipoSel) return false;
+
+      const categoriaRaw = (r && r.categoria != null) ? r.categoria.toString().trim() : '';
+      const catNorm = categoriaRaw.toLowerCase().trim();
+      if (categoriaSel) {
+        if (categoriaSel === 'retraso') {
+          if (!(catNorm === 'retraso' || catNorm === 'retrasos')) return false;
+        } else if (catNorm !== categoriaSel) {
+          return false;
+        }
+      }
+
+      const dReg = _dateFromDDMMYYYY_((r && r.fecha != null) ? r.fecha.toString() : '');
+      if (!dReg) return false;
+
+      if (dDesde && dReg.getTime() < dDesde.getTime()) return false;
+      if (dHasta && dReg.getTime() > dHasta.getTime()) return false;
+
+      return true;
+    });
+
+    AppAsistencia.pagina = 1;
+    renderTablaAsistencia();
+  }
+
+  function renderTablaAsistencia() {
+    const tbody = document.getElementById('tbody_asistencia_admin');
+    if (!tbody) return;
+
+    const rowsAll = AppAsistencia.registrosFiltrados || [];
+    let html = '';
+
+    let total = rowsAll.length;
+    let atiempo = 0;
+    let retrasos = 0;
+
+    for (let i = 0; i < rowsAll.length; i++) {
+      const r = rowsAll[i] || {};
+      const categoria = (r.categoria == null) ? '' : r.categoria.toString();
+      const catNorm = categoria.toLowerCase().trim();
+      if (catNorm === 'a tiempo') atiempo++;
+      if (catNorm === 'retraso' || catNorm === 'retrasos') retrasos++;
+    }
+
+    const pageSize = _getPageSizeAsistencia_();
+    AppAsistencia.pageSize = pageSize;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (AppAsistencia.pagina > totalPages) AppAsistencia.pagina = totalPages;
+    if (AppAsistencia.pagina < 1) AppAsistencia.pagina = 1;
+    const start = (AppAsistencia.pagina - 1) * pageSize;
+    const end = Math.min(start + pageSize, total);
+    const pageRows = rowsAll.slice(start, end);
+
+    for (let i = 0; i < pageRows.length; i++) {
+      const r = pageRows[i] || {};
+      const fecha = (r.fecha == null) ? '' : r.fecha.toString();
+      const hora = (r.hora == null) ? '' : r.hora.toString();
+      const nombre = (r.nombre == null) ? '' : r.nombre.toString();
+      const tipo = (r.tipo == null) ? '' : r.tipo.toString();
+      const categoria = (r.categoria == null) ? '' : r.categoria.toString();
+
+      html += '<tr>' +
+        '<td>' + _esc_(fecha) + '</td>' +
+        '<td>' + _esc_(hora) + '</td>' +
+        '<td>' + _esc_(nombre) + '</td>' +
+        '<td>' + _esc_(tipo) + '</td>' +
+        '<td>' + _badgeCategoria_(categoria) + '</td>' +
+      '</tr>';
+    }
+
+    tbody.innerHTML = html;
+
+    const elTotal = document.getElementById('kpi_total');
+    const elATiempo = document.getElementById('kpi_atiempo');
+    const elRetrasos = document.getElementById('kpi_retrasos');
+    if (elTotal) elTotal.textContent = String(total);
+    if (elATiempo) elATiempo.textContent = String(atiempo);
+    if (elRetrasos) elRetrasos.textContent = String(retrasos);
+
+    const infoEl = document.getElementById('asistencia_page_info');
+    if (infoEl) {
+      const shown = total === 0 ? '0' : (String(start + 1) + '–' + String(end));
+      infoEl.textContent = 'Mostrando ' + shown + ' de ' + String(total);
+    }
+    const prevBtn = document.getElementById('asistencia_prev');
+    const nextBtn = document.getElementById('asistencia_next');
+    if (prevBtn) prevBtn.disabled = AppAsistencia.pagina <= 1 || total === 0;
+    if (nextBtn) nextBtn.disabled = AppAsistencia.pagina >= totalPages || total === 0;
+  }
+
+  function _dateFromDDMMYYYY_(ddmmyyyy) {
+    const s = (ddmmyyyy || '').toString().trim();
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+    if (!m) return null;
+    const dd = Number(m[1]);
+    const mm = Number(m[2]);
+    const yyyy = Number(m[3]);
+    if (!yyyy || !mm || !dd) return null;
+    return new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
+  }
+
+  function _dateFromYMD_(ymd) {
+    const s = (ymd || '').toString().trim();
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (!m) return null;
+    const yyyy = Number(m[1]);
+    const mm = Number(m[2]);
+    const dd = Number(m[3]);
+    if (!yyyy || !mm || !dd) return null;
+    return new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
+  }
+
+  function _badgeCategoria_(categoria) {
+    const raw = (categoria == null) ? '' : categoria.toString();
+    const norm = raw.toLowerCase().trim();
+    let cls = 'text-bg-secondary';
+    if (norm === 'a tiempo') cls = 'text-bg-success';
+    if (norm === 'retraso' || norm === 'retrasos') cls = 'text-bg-danger';
+    return '<span class="badge ' + cls + '">' + _esc_(raw) + '</span>';
+  }
+
+  function _getPageSizeAsistencia_() {
+    const sel = document.getElementById('asistencia_page_size');
+    const raw = sel && sel.value ? sel.value.toString().trim() : '';
+    const n = parseInt(raw, 10);
+    return isNaN(n) || n < 1 ? 10 : n;
+  }
+
+  function _hoyYMD_Bogota_() {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' });
+      return fmt.format(new Date());
+    } catch (e) {}
+    try {
+      return new Date().toISOString().slice(0, 10);
+    } catch (e) {}
+    return '';
+  }
+
+  function _aplicarFiltroHoyPorDefecto_() {
+    if (AppAsistencia.defaultHoyAplicado) return;
+    const desdeEl = document.getElementById('filtro_fecha_desde');
+    const hastaEl = document.getElementById('filtro_fecha_hasta');
+    if (!desdeEl || !hastaEl) return;
+    const hoy = _hoyYMD_Bogota_();
+    if (!hoy) return;
+    desdeEl.value = hoy;
+    hastaEl.value = hoy;
+    AppAsistencia.defaultHoyAplicado = true;
+  }
+
+  function _setOptionsSelect_(selectEl, options, selectedValue, placeholderLabel) {
+    if (!selectEl) return;
+    const sel = (selectedValue == null) ? '' : selectedValue.toString();
+    const ph = (placeholderLabel == null) ? 'Todos' : placeholderLabel.toString();
+    let html = '<option value="" selected>' + _esc_(ph) + '</option>';
+    for (let i = 0; i < options.length; i++) {
+      const opt = options[i];
+      const val = (opt == null) ? '' : opt.toString();
+      if (!val) continue;
+      const selected = sel && val === sel ? ' selected' : '';
+      html += '<option value="' + _esc_(val) + '"' + selected + '>' + _esc_(val) + '</option>';
+    }
+    selectEl.innerHTML = html;
+  }
+
+  function _poblarFiltrosAsistencia_() {
+    const tipoEl = document.getElementById('filtro_tipo');
+    const categoriaEl = document.getElementById('filtro_categoria');
+    if (!tipoEl || !categoriaEl) return;
+
+    const tipoSel = tipoEl.value ? tipoEl.value.toString() : '';
+    const catSel = categoriaEl.value ? categoriaEl.value.toString() : '';
+
+    const tipos = {};
+    const cats = {};
+
+    const rows = AppAsistencia.registrosOriginales || [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] || {};
+      const tipo = (r.tipo == null) ? '' : r.tipo.toString().trim();
+      if (tipo) tipos[tipo] = true;
+
+      const catRaw = (r.categoria == null) ? '' : r.categoria.toString().trim();
+      const norm = catRaw.toLowerCase().trim();
+      let label = catRaw;
+      if (norm === 'retrasos') label = 'Retraso';
+      if (norm === 'retraso') label = 'Retraso';
+      if (norm === 'a tiempo') label = 'A tiempo';
+      if (norm === 'registrado') label = 'Registrado';
+      if (label) cats[label] = true;
+    }
+
+    const tiposArr = Object.keys(tipos).sort();
+    const catsArr = Object.keys(cats).sort();
+
+    _setOptionsSelect_(tipoEl, tiposArr, tipoSel, 'Todos');
+    _setOptionsSelect_(categoriaEl, catsArr, catSel, 'Todas');
+  }
+
+  function _esc_(s) {
+    return (s == null ? '' : s.toString())
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const btn = document.getElementById('btn_filtrar_asistencia');
+    if (btn) btn.addEventListener('click', aplicarFiltrosAsistencia);
+
+    const prevBtn = document.getElementById('asistencia_prev');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        if (AppAsistencia.pagina > 1) {
+          AppAsistencia.pagina--;
+          renderTablaAsistencia();
+        }
+      });
+    }
+    const nextBtn = document.getElementById('asistencia_next');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        AppAsistencia.pagina++;
+        renderTablaAsistencia();
+      });
+    }
+    const sizeSel = document.getElementById('asistencia_page_size');
+    if (sizeSel) {
+      sizeSel.addEventListener('change', function () {
+        AppAsistencia.pagina = 1;
+        renderTablaAsistencia();
+      });
+    }
+
+    const nombreEl = document.getElementById('filtro_nombre');
+    if (nombreEl) {
+      nombreEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') aplicarFiltrosAsistencia();
+      });
+    }
+
+    const tipoEl = document.getElementById('filtro_tipo');
+    if (tipoEl) tipoEl.addEventListener('change', aplicarFiltrosAsistencia);
+    const catEl = document.getElementById('filtro_categoria');
+    if (catEl) catEl.addEventListener('change', aplicarFiltrosAsistencia);
+
+    cargarAsistenciaAdmin();
+  });
+</script>

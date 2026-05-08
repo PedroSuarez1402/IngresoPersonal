@@ -1,0 +1,153 @@
+<script>
+  function construirMenu(usuario) {
+    const secLogin = document.getElementById('seccion_login');
+    const secMenu = document.getElementById('seccion_menu_principal');
+    if (secLogin) secLogin.classList.add('d-none');
+    if (secMenu) secMenu.classList.remove('d-none');
+
+    const bienvenida = document.getElementById('bienvenida_usuario');
+    if (bienvenida) bienvenida.textContent = 'Hola, ' + ((usuario && usuario.nombre) ? usuario.nombre : '');
+
+    const cardAsistencia = document.getElementById('card_asistencia');
+    const cardAdmin = document.getElementById('card_admin');
+    if (cardAsistencia) cardAsistencia.classList.add('d-none');
+    if (cardAdmin) cardAdmin.classList.add('d-none');
+
+    const rol = (usuario && usuario.rol_id != null) ? usuario.rol_id : '';
+    const rolNum = parseInt(rol, 10);
+
+    if (rol === '1' || rolNum === 1) {
+      if (cardAsistencia) cardAsistencia.classList.remove('d-none');
+    } else if (rol === '2' || rolNum === 2) {
+      if (cardAsistencia) cardAsistencia.classList.remove('d-none');
+      if (cardAdmin) cardAdmin.classList.remove('d-none');
+    }
+  }
+
+  function cerrarSesion() {
+    try {
+      localStorage.removeItem('sesionIngresoPersonal');
+      localStorage.removeItem('sesionIngresoPersonal_lastActivity');
+    } catch (e) {}
+    window.top.location.href = window.APP_URL;
+  }
+
+  function procesarLogin() {
+    const inputCorreo = document.getElementById('login_correo');
+    const inputPass = document.getElementById('login_pass');
+    const btn = document.getElementById('btn_ingresar');
+    const err = document.getElementById('login_error');
+
+    let correo = inputCorreo ? inputCorreo.value : '';
+    correo = (correo || '').toString().trim();
+    let pass = inputPass ? inputPass.value : '';
+    pass = (pass || '').toString();
+
+    if (err) {
+      err.classList.add('d-none');
+      err.textContent = '';
+    }
+
+    if (!correo) {
+      if (err) {
+        err.textContent = 'Ingresa tu correo.';
+        err.classList.remove('d-none');
+      }
+      return;
+    }
+    if (!pass) {
+      if (err) {
+        err.textContent = 'Ingresa tu contraseña.';
+        err.classList.remove('d-none');
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Validando...';
+    }
+
+    google.script.run
+      .withSuccessHandler(respuestaLogin)
+      .withFailureHandler(function (e) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Ingresar';
+        }
+        if (err) {
+          err.textContent = (e && e.message) ? e.message : 'Error al validar.';
+          err.classList.remove('d-none');
+        }
+      })
+      .validarAccesoUsuario(correo, pass);
+  }
+
+  function respuestaLogin(res) {
+    const btn = document.getElementById('btn_ingresar');
+    const err = document.getElementById('login_error');
+    const inputPass = document.getElementById('login_pass');
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Ingresar';
+    }
+    if (inputPass) inputPass.value = '';
+
+    if (!res || res.exito === false) {
+      if (err) {
+        err.textContent = (res && res.mensaje) ? res.mensaje : 'Error al validar.';
+        err.classList.remove('d-none');
+      }
+      return;
+    }
+
+    try {
+      localStorage.setItem('sesionIngresoPersonal', JSON.stringify(res.usuario));
+      localStorage.setItem('sesionIngresoPersonal_lastActivity', String(Date.now()));
+    } catch (e) {}
+
+    window.UsuarioActual = res.usuario;
+    construirMenu(res.usuario);
+    if (typeof iniciarProtectorInactividad === 'function') {
+      iniciarProtectorInactividad(function () {
+        cerrarSesion();
+      }, 5 * 60 * 1000);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const passEl = document.getElementById('login_pass');
+    const btnToggle = document.getElementById('btn_toggle_pass');
+    const iconToggle = document.getElementById('icon_toggle_pass');
+    if (btnToggle && passEl) {
+      btnToggle.addEventListener('click', function () {
+        const isPassword = passEl.getAttribute('type') === 'password';
+        passEl.setAttribute('type', isPassword ? 'text' : 'password');
+        btnToggle.setAttribute('aria-pressed', isPassword ? 'true' : 'false');
+        btnToggle.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+        if (iconToggle) iconToggle.className = isPassword ? 'bi bi-eye-slash' : 'bi bi-eye';
+        passEl.focus();
+      });
+    }
+
+    let raw = null;
+    try {
+      if (typeof verificarSesionInactividad === 'function' && verificarSesionInactividad(5 * 60 * 1000)) return;
+      raw = localStorage.getItem('sesionIngresoPersonal');
+    } catch (e) {}
+    if (!raw) return;
+
+    try {
+      const u = JSON.parse(raw);
+      if (!u || !u.id) return;
+      window.UsuarioActual = u;
+      construirMenu(u);
+      if (typeof iniciarProtectorInactividad === 'function') {
+        iniciarProtectorInactividad(function () {
+          cerrarSesion();
+        }, 5 * 60 * 1000);
+      }
+    } catch (e) {}
+  });
+</script>
