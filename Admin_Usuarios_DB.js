@@ -46,6 +46,7 @@ function guardarUsuarioAdmin(datos) {
     const estado = 'Activo';
     const password = passwordIn || identificacion;
     sheet.appendRow([newId, correo, password, nombre, identificacion, cargo, rolId, estado]);
+    try { CacheService.getScriptCache().remove('CACHE_USUARIOS'); } catch (e) {}
     return { exito: true, id: newId };
   }
 
@@ -60,6 +61,7 @@ function guardarUsuarioAdmin(datos) {
   sheet.getRange(absRow, 6).setValue(cargo);
   sheet.getRange(absRow, 7).setValue(rolId);
 
+  try { CacheService.getScriptCache().remove('CACHE_USUARIOS'); } catch (e) {}
   return { exito: true, id: id };
 }
 
@@ -84,6 +86,7 @@ function cambiarEstadoUsuarioAdmin(idUsuario, nuevoEstado) {
   if (rowIndex === -1) throw new Error('No se encontró el usuario.');
 
   sheet.getRange(rowIndex + 2, 8).setValue(estadoOut);
+  try { CacheService.getScriptCache().remove('CACHE_USUARIOS'); } catch (e) {}
   return { exito: true };
 }
 

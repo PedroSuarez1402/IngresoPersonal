@@ -1,4 +1,21 @@
 <script>
+  const EMPRESA_LAT = 7.085232;
+  const EMPRESA_LON = -73.110682;
+  const RADIO_PERMITIDO_METROS = 40;
+
+  function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = function (deg) { return (deg * Math.PI) / 180; };
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
   function mostrarToast(mensaje, tipo) {
     const container = document.getElementById('toast_container');
     if (!container || !window.bootstrap) return;
@@ -67,6 +84,12 @@
     let tipo = sel ? sel.value : '';
     tipo = (tipo || '').toString().trim();
 
+    function rehabilitarBoton() {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.textContent = 'Registrar Marcación';
+    }
+
     if (!tipo) {
       mostrarToast('Selecciona un tipo de marcación.', 'warning');
       return;
@@ -91,19 +114,53 @@
 
     if (btn) {
       btn.disabled = true;
-      btn.textContent = 'Guardando...';
+      btn.textContent = 'Obteniendo GPS...';
     }
 
-    google.script.run
-      .withSuccessHandler(respuestaMarcacion)
-      .withFailureHandler(function (e) {
-        mostrarToast((e && e.message) ? e.message : 'Error al registrar.', 'danger');
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Registrar Marcación';
+    if (!navigator.geolocation) {
+      mostrarToast('Tu navegador no soporta GPS.', 'danger');
+      rehabilitarBoton();
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        try {
+          const lat = pos && pos.coords ? Number(pos.coords.latitude) : NaN;
+          const lon = pos && pos.coords ? Number(pos.coords.longitude) : NaN;
+          if (isNaN(lat) || isNaN(lon)) throw new Error('coords inválidas');
+
+          const distancia = calcularDistanciaMetros(lat, lon, EMPRESA_LAT, EMPRESA_LON);
+          const distRedondeada = Math.round(distancia);
+          if (distRedondeada > RADIO_PERMITIDO_METROS) {
+            mostrarToast(
+              'Estás fuera del rango permitido. Distancia: ' + distRedondeada + ' metros. Máximo: ' + RADIO_PERMITIDO_METROS + 'm.',
+              'danger'
+            );
+            rehabilitarBoton();
+            return;
+          }
+
+          if (btn) btn.textContent = 'Guardando...';
+
+          google.script.run
+            .withSuccessHandler(respuestaMarcacion)
+            .withFailureHandler(function (e) {
+              mostrarToast((e && e.message) ? e.message : 'Error al registrar.', 'danger');
+              rehabilitarBoton();
+            })
+            .registrarAsistenciaManual(window.UsuarioActual.id, window.UsuarioActual.nombre, tipo);
+        } catch (e) {
+          mostrarToast('Debes permitir el acceso a tu ubicación (GPS) para registrar asistencia.', 'danger');
+          rehabilitarBoton();
         }
-      })
-      .registrarAsistenciaManual(window.UsuarioActual.id, window.UsuarioActual.nombre, tipo);
+      },
+      function () {
+        mostrarToast('Debes permitir el acceso a tu ubicación (GPS) para registrar asistencia.', 'danger');
+        rehabilitarBoton();
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   }
 
   function respuestaMarcacion(res) {

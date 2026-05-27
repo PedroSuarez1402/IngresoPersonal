@@ -44,6 +44,7 @@ function guardarConfiguracionAdmin(datos) {
       sheet.appendRow([newId, etapa, horaInicio, horaFin, horaIdeal, descripcion]);
       const row = sheet.getLastRow();
       sheet.getRange(row, 3, 1, 3).setNumberFormat('HH:mm');
+      try { CacheService.getScriptCache().remove('CACHE_CONFIG_HORARIOS'); } catch (e) {}
       return { exito: true, mensaje: 'Regla creada: ' + newId };
     }
 
@@ -58,6 +59,7 @@ function guardarConfiguracionAdmin(datos) {
       const row = i + 2;
       sheet.getRange(row, 2, 1, 5).setValues([[etapa, horaInicio, horaFin, horaIdeal, descripcion]]);
       sheet.getRange(row, 3, 1, 3).setNumberFormat('HH:mm');
+      try { CacheService.getScriptCache().remove('CACHE_CONFIG_HORARIOS'); } catch (e) {}
       return { exito: true, mensaje: 'Regla actualizada: ' + id };
     }
 

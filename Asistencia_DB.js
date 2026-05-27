@@ -22,9 +22,9 @@ function registrarAsistenciaManual(idUsuarioInput, nombreUsuarioInput, tipoMarca
   }
 
   if (tipoMarcacion === 'Salida Almuerzo') {
-    const reglaAlm = _buscarReglaConfigHorarios_(ss, 'Salida Almuerzo');
-    const idealAlm = reglaAlm ? _timeToMinutes_(reglaAlm[4], tz) : null;
-    const finAlm = reglaAlm ? _timeToMinutes_(reglaAlm[3], tz) : null;
+    const reglaAlm = _getReglaConfigHorarios_(ss, 'Salida Almuerzo');
+    const idealAlm = reglaAlm ? reglaAlm.ideal : null;
+    const finAlm = reglaAlm ? reglaAlm.fin : null;
     if (idealAlm !== null && finAlm !== null && minutosAhora !== null) {
       if (minutosAhora < idealAlm || minutosAhora > finAlm) {
         return { exito: false, mensaje: 'No puedes registrar "Salida Almuerzo" a esta hora según el horario laboral. Por favor selecciona "Salida por Permiso".' };
@@ -32,9 +32,19 @@ function registrarAsistenciaManual(idUsuarioInput, nombreUsuarioInput, tipoMarca
     }
   }
 
-  if (_existeMarcacionHoy_(shAsis, fecha, idUsuario, tipoMarcacion, tz)) {
-    if (tipoMarcacion === 'Ingreso') return { exito: false, mensaje: 'Ya registraste tu ingreso hoy.' };
-    return { exito: false, mensaje: 'Ya existe una marcación para hoy con ese tipo.' };
+  if (tipoMarcacion === 'Ingreso') {
+    if (_existeMarcacionHoy_(shAsis, fecha, idUsuario, tipoMarcacion, tz)) {
+      return { exito: false, mensaje: 'Ya registraste tu ingreso hoy.' };
+    }
+  } else if (tipoMarcacion === 'Reingreso') {
+    const okReingreso = _puedeRegistrarReingresoHoy_(shAsis, fecha, idUsuario, tz);
+    if (!okReingreso) {
+      return { exito: false, mensaje: 'Para registrar "Reingreso" primero debes registrar una salida válida ("Salida Almuerzo" o "Salida por Permiso").' };
+    }
+  } else {
+    if (_existeMarcacionHoy_(shAsis, fecha, idUsuario, tipoMarcacion, tz)) {
+      return { exito: false, mensaje: 'Ya existe una marcación para hoy con ese tipo.' };
+    }
   }
 
   const categoria = _calcularCategoriaMarcacion_(ss, now, tipoMarcacion);
@@ -48,16 +58,44 @@ function _existeMarcacionHoy_(sheet, fechaDDMMYYYY, idUsuario, tipoMarcacion, tz
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return false;
 
-  const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  const numRows = Math.min(lastRow - 1, 300);
+  const startRow = lastRow - numRows + 1;
+  const data = sheet.getRange(startRow, 1, numRows, 6).getValues();
   const tipoBuscado = (tipoMarcacion == null) ? '' : String(tipoMarcacion).trim().toLowerCase();
   const tzUse = tz || Session.getScriptTimeZone();
-  for (let i = 0; i < data.length; i++) {
+  for (let i = data.length - 1; i >= 0; i--) {
     const r = data[i] || [];
     const fecha = _normalizarFechaDDMMYYYY_(r[1], tzUse);
+    if (fecha !== fechaDDMMYYYY) break;
     const uid = (r[3] == null) ? '' : String(r[3]).trim();
     const tipo = (r[5] == null) ? '' : String(r[5]).trim().toLowerCase();
     if (fecha === fechaDDMMYYYY && uid === idUsuario && tipo === tipoBuscado) return true;
   }
+  return false;
+}
+
+function _puedeRegistrarReingresoHoy_(sheet, fechaDDMMYYYY, idUsuario, tz) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return false;
+
+  const numRows = Math.min(lastRow - 1, 300);
+  const startRow = lastRow - numRows + 1;
+  const data = sheet.getRange(startRow, 1, numRows, 6).getValues();
+  const tzUse = tz || Session.getScriptTimeZone();
+
+  for (let i = data.length - 1; i >= 0; i--) {
+    const r = data[i] || [];
+    const fecha = _normalizarFechaDDMMYYYY_(r[1], tzUse);
+    if (fecha !== fechaDDMMYYYY) break;
+
+    const uid = (r[3] == null) ? '' : String(r[3]).trim();
+    if (uid !== idUsuario) continue;
+
+    const tipo = (r[5] == null) ? '' : String(r[5]).trim().toLowerCase();
+    if (tipo === 'salida almuerzo' || tipo === 'salida por permiso') return true;
+    return false;
+  }
+
   return false;
 }
 
@@ -74,19 +112,13 @@ function _calcularCategoriaMarcacion_(ss, now, etapa) {
   const etapaNorm = etapaRaw.toLowerCase();
   if (etapaNorm === 'salida por permiso') return 'Registrado';
 
-  const shCfg = ss.getSheetByName('Config_Horarios');
-  if (!shCfg) return 'Registrado';
-
-  const lastRow = shCfg.getLastRow();
-  if (lastRow < 2) return 'Registrado';
-
   const tz = ss.getSpreadsheetTimeZone() || Session.getScriptTimeZone() || 'America/Bogota';
-  const regla = _buscarReglaConfigHorarios_(ss, etapaRaw);
+  const regla = _getReglaConfigHorarios_(ss, etapaRaw);
   if (!regla) return 'Registrado';
 
-  const inicio = _timeToMinutes_(regla[2], tz);
-  const fin = _timeToMinutes_(regla[3], tz);
-  const ideal = _timeToMinutes_(regla[4], tz);
+  const inicio = regla.inicio;
+  const fin = regla.fin;
+  const ideal = regla.ideal;
   const actual = _timeToMinutes_(now, tz);
 
   if (inicio == null || fin == null || ideal == null || actual == null) return 'Registrado';
@@ -137,17 +169,56 @@ function _timeToMinutes_(v, tz) {
   return hh * 60 + mm;
 }
 
-function _buscarReglaConfigHorarios_(ss, etapa) {
+const CACHE_CONFIG_HORARIOS = 'CACHE_CONFIG_HORARIOS';
+
+function _getConfigHorariosCached_(ss) {
+  const cache = CacheService.getScriptCache();
+  const raw = cache.get(CACHE_CONFIG_HORARIOS);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {}
+  }
+
   const shCfg = ss.getSheetByName('Config_Horarios');
-  if (!shCfg) return null;
+  if (!shCfg) return [];
   const lastRow = shCfg.getLastRow();
-  if (lastRow < 2) return null;
+  if (lastRow < 2) return [];
+  const tz = ss.getSpreadsheetTimeZone() || Session.getScriptTimeZone() || 'America/Bogota';
   const rows = shCfg.getRange(2, 1, lastRow - 1, 6).getValues();
-  const etapaBuscada = (etapa == null) ? '' : String(etapa).trim().toLowerCase();
+  const reglas = [];
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i] || [];
-    const e = (r[1] == null) ? '' : String(r[1]).trim().toLowerCase();
-    if (e === etapaBuscada) return r;
+    const etapa = (r[1] == null) ? '' : String(r[1]).trim();
+    if (!etapa) continue;
+    reglas.push({
+      etapa: etapa,
+      inicio: _timeToMinutes_(r[2], tz),
+      fin: _timeToMinutes_(r[3], tz),
+      ideal: _timeToMinutes_(r[4], tz)
+    });
+  }
+  try {
+    cache.put(CACHE_CONFIG_HORARIOS, JSON.stringify(reglas), 21600);
+  } catch (e) {}
+  return reglas;
+}
+
+function _getReglaConfigHorarios_(ss, etapa) {
+  const reglas = _getConfigHorariosCached_(ss);
+  const etapaBuscada = (etapa == null) ? '' : String(etapa).trim().toLowerCase();
+  for (let i = 0; i < reglas.length; i++) {
+    const r = reglas[i] || {};
+    const e = (r.etapa == null) ? '' : String(r.etapa).trim().toLowerCase();
+    if (e === etapaBuscada) {
+      return {
+        etapa: (r.etapa == null) ? '' : String(r.etapa).trim(),
+        inicio: (r.inicio == null ? null : Number(r.inicio)),
+        fin: (r.fin == null ? null : Number(r.fin)),
+        ideal: (r.ideal == null ? null : Number(r.ideal))
+      };
+    }
   }
   return null;
 }
@@ -161,24 +232,16 @@ function _fmtHHMM_(minutos) {
 
 function obtenerConfigHorariosPublico() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const shCfg = ss.getSheetByName('Config_Horarios');
-  if (!shCfg) return {};
-  const lastRow = shCfg.getLastRow();
-  if (lastRow < 2) return {};
-  const tz = ss.getSpreadsheetTimeZone() || Session.getScriptTimeZone() || 'America/Bogota';
-  const rows = shCfg.getRange(2, 1, lastRow - 1, 6).getValues();
+  const reglas = _getConfigHorariosCached_(ss);
   const out = {};
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i] || [];
-    const etapa = (r[1] == null) ? '' : String(r[1]).trim();
+  for (let i = 0; i < reglas.length; i++) {
+    const r = reglas[i] || {};
+    const etapa = (r.etapa == null) ? '' : String(r.etapa).trim();
     if (!etapa) continue;
-    const ini = _timeToMinutes_(r[2], tz);
-    const fin = _timeToMinutes_(r[3], tz);
-    const ideal = _timeToMinutes_(r[4], tz);
     out[etapa] = {
-      inicio: _fmtHHMM_(ini),
-      fin: _fmtHHMM_(fin),
-      ideal: _fmtHHMM_(ideal)
+      inicio: _fmtHHMM_(r.inicio),
+      fin: _fmtHHMM_(r.fin),
+      ideal: _fmtHHMM_(r.ideal)
     };
   }
   return out;
