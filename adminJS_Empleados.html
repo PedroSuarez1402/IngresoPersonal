@@ -7,6 +7,12 @@
   };
 
   function cargarUsuariosAdmin() {
+    const token = (typeof obtenerTokenSesion === 'function') ? obtenerTokenSesion() : '';
+    if (!token) {
+      alert('Sesión expirada. Vuelve a iniciar sesión.');
+      if (window.APP_URL) window.location.href = window.APP_URL;
+      return;
+    }
     google.script.run
       .withSuccessHandler(function (usuarios) {
         AppEmpleados.usuariosOriginales = Array.isArray(usuarios) ? usuarios : [];
@@ -17,8 +23,11 @@
       })
       .withFailureHandler(function (e) {
         alert((e && e.message) ? e.message : 'Error cargando usuarios.');
+        if (e && e.message && String(e.message).toLowerCase().indexOf('sesión') !== -1) {
+          if (window.APP_URL) window.location.href = window.APP_URL;
+        }
       })
-      .obtenerUsuariosAdmin();
+      .obtenerUsuariosAdmin(token);
   }
 
   function aplicarFiltroUsuariosAdmin() {
@@ -189,14 +198,24 @@
       const verbo = (nuevoEstado.toLowerCase().trim() === 'activo') ? 'activar' : 'desactivar';
       if (!confirm('¿Deseas ' + verbo + ' este usuario?')) return;
 
+      const token = (typeof obtenerTokenSesion === 'function') ? obtenerTokenSesion() : '';
+      if (!token) {
+        alert('Sesión expirada. Vuelve a iniciar sesión.');
+        if (window.APP_URL) window.location.href = window.APP_URL;
+        return;
+      }
+
       google.script.run
         .withSuccessHandler(function () {
           cargarUsuariosAdmin();
         })
         .withFailureHandler(function (err) {
           alert((err && err.message) ? err.message : 'Error actualizando estado.');
+          if (err && err.message && String(err.message).toLowerCase().indexOf('sesión') !== -1) {
+            if (window.APP_URL) window.location.href = window.APP_URL;
+          }
         })
-        .cambiarEstadoUsuarioAdmin(id, nuevoEstado);
+        .cambiarEstadoUsuarioAdmin(token, id, nuevoEstado);
     }
   }
 
@@ -227,6 +246,17 @@
       btnGuardar.textContent = 'Guardando...';
     }
 
+    const token = (typeof obtenerTokenSesion === 'function') ? obtenerTokenSesion() : '';
+    if (!token) {
+      alert('Sesión expirada. Vuelve a iniciar sesión.');
+      if (btnGuardar) {
+        btnGuardar.disabled = false;
+        btnGuardar.textContent = 'Guardar';
+      }
+      if (window.APP_URL) window.location.href = window.APP_URL;
+      return;
+    }
+
     google.script.run
       .withSuccessHandler(function () {
         cerrarModalUsuarioAdmin();
@@ -239,8 +269,11 @@
           btnGuardar.textContent = 'Guardar';
         }
         alert((err && err.message) ? err.message : 'Error guardando usuario.');
+        if (err && err.message && String(err.message).toLowerCase().indexOf('sesión') !== -1) {
+          if (window.APP_URL) window.location.href = window.APP_URL;
+        }
       })
-      .guardarUsuarioAdmin(datos);
+      .guardarUsuarioAdmin(token, datos);
   }
 
   function _rolLabel_(rolId) {

@@ -62,18 +62,86 @@
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
 
     const sel = document.getElementById('select_tipo_marcacion');
-    if (sel) {
-      sel.value = '';
-      _cargarConfigHorariosSiFalta_(function () {
-        _aplicarRestriccionesCliente_(sel);
-      });
+    const btn = document.getElementById('btn_registrar_reloj');
+    if (sel) sel.disabled = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Cargando estado...';
+      btn.onclick = enviarMarcacionManual;
+    }
+    if (sel) sel.value = '';
+
+    const token = _getToken_();
+    if (!token) {
+      mostrarToast('Sesión no válida. Vuelve a iniciar sesión.', 'danger');
+      if (sel) sel.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Registrar Marcación';
+      }
+      return;
     }
 
-    const btn = document.getElementById('btn_registrar_reloj');
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Registrar Marcación';
-      btn.onclick = enviarMarcacionManual;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        aplicarReglasDeEstado(res, sel, btn);
+        _cargarConfigHorariosSiFalta_(function () {
+          _aplicarRestriccionesCliente_(sel);
+        });
+      })
+      .withFailureHandler(function () {
+        mostrarToast('No se pudo cargar el estado. Intenta nuevamente.', 'danger');
+        aplicarReglasDeEstado({ estado: 'Adentro' }, sel, btn);
+        _cargarConfigHorariosSiFalta_(function () {
+          _aplicarRestriccionesCliente_(sel);
+        });
+      })
+      .obtenerEstadoUsuarioHoy(token);
+  }
+
+  function aplicarReglasDeEstado(res, selectEl, btnEl) {
+    if (!selectEl) return;
+    const estado = (res && res.estado) ? String(res.estado) : 'Ninguno';
+
+    const opts = selectEl.querySelectorAll('option');
+    for (let i = 0; i < opts.length; i++) {
+      if ((opts[i].value || '') === '') continue;
+      opts[i].disabled = true;
+    }
+
+    function habilitar(value) {
+      for (let i = 0; i < opts.length; i++) {
+        if ((opts[i].value || '').toString() === value) {
+          opts[i].disabled = false;
+          break;
+        }
+      }
+    }
+
+    if (estado === 'Ninguno') {
+      habilitar('Ingreso');
+    } else if (estado === 'Adentro') {
+      habilitar('Salida Almuerzo');
+      habilitar('Salida por Permiso');
+      habilitar('Salida Final');
+    } else if (estado === 'Afuera') {
+      habilitar('Reingreso');
+    } else if (estado === 'Terminado') {
+      selectEl.disabled = true;
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.textContent = 'Registrar Marcación';
+      }
+      mostrarToast('Ya has registrado tu Salida Final hoy.', 'info');
+      return;
+    } else {
+      habilitar('Ingreso');
+    }
+
+    selectEl.disabled = false;
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.textContent = 'Registrar Marcación';
     }
   }
 
@@ -107,7 +175,8 @@
       return;
     }
 
-    if (!window.UsuarioActual || !window.UsuarioActual.id) {
+    const token = _getToken_();
+    if (!token) {
       mostrarToast('Sesión no válida. Vuelve a iniciar sesión.', 'danger');
       return;
     }
@@ -149,7 +218,7 @@
               mostrarToast((e && e.message) ? e.message : 'Error al registrar.', 'danger');
               rehabilitarBoton();
             })
-            .registrarAsistenciaManual(window.UsuarioActual.id, window.UsuarioActual.nombre, tipo);
+            .registrarAsistenciaManual(token, tipo);
         } catch (e) {
           mostrarToast('Debes permitir el acceso a tu ubicación (GPS) para registrar asistencia.', 'danger');
           rehabilitarBoton();
@@ -260,5 +329,13 @@
         if (typeof cb === 'function') cb();
       })
       .obtenerConfigHorariosPublico();
+  }
+
+  function _getToken_() {
+    try {
+      return sessionStorage.getItem('ip_token') || '';
+    } catch (e) {
+      return '';
+    }
   }
 </script>

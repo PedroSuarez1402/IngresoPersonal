@@ -25,10 +25,25 @@
   }
 
   function cerrarSesion() {
+    const token = _getTokenLogin_();
     try {
+      sessionStorage.removeItem('ip_token');
+      sessionStorage.removeItem('ip_usuario');
+      sessionStorage.removeItem('ip_lastActivity');
       localStorage.removeItem('sesionIngresoPersonal');
       localStorage.removeItem('sesionIngresoPersonal_lastActivity');
     } catch (e) {}
+    if (token) {
+      google.script.run
+        .withSuccessHandler(function () {
+          window.top.location.href = window.APP_URL;
+        })
+        .withFailureHandler(function () {
+          window.top.location.href = window.APP_URL;
+        })
+        .cerrarSesionToken(token);
+      return;
+    }
     window.top.location.href = window.APP_URL;
   }
 
@@ -68,6 +83,16 @@
       btn.textContent = 'Validando...';
     }
 
+    try {
+      const chk = document.getElementById('login_recordar');
+      const remember = !!(chk && chk.checked);
+      if (remember) {
+        localStorage.setItem('ip_remember_email', correo);
+      } else {
+        localStorage.removeItem('ip_remember_email');
+      }
+    } catch (e) {}
+
     google.script.run
       .withSuccessHandler(respuestaLogin)
       .withFailureHandler(function (e) {
@@ -103,8 +128,9 @@
     }
 
     try {
-      localStorage.setItem('sesionIngresoPersonal', JSON.stringify(res.usuario));
-      localStorage.setItem('sesionIngresoPersonal_lastActivity', String(Date.now()));
+      sessionStorage.setItem('ip_token', String(res.token || ''));
+      sessionStorage.setItem('ip_usuario', JSON.stringify(res.usuario || {}));
+      sessionStorage.setItem('ip_lastActivity', String(Date.now()));
     } catch (e) {}
 
     window.UsuarioActual = res.usuario;
@@ -113,6 +139,14 @@
       iniciarProtectorInactividad(function () {
         cerrarSesion();
       }, 5 * 60 * 1000);
+    }
+  }
+
+  function _getTokenLogin_() {
+    try {
+      return sessionStorage.getItem('ip_token') || '';
+    } catch (e) {
+      return '';
     }
   }
 
@@ -131,23 +165,33 @@
       });
     }
 
-    let raw = null;
     try {
-      if (typeof verificarSesionInactividad === 'function' && verificarSesionInactividad(5 * 60 * 1000)) return;
-      raw = localStorage.getItem('sesionIngresoPersonal');
+      const remembered = localStorage.getItem('ip_remember_email');
+      const correoEl = document.getElementById('login_correo');
+      if (remembered && correoEl && !correoEl.value) correoEl.value = String(remembered);
     } catch (e) {}
-    if (!raw) return;
 
-    try {
-      const u = JSON.parse(raw);
-      if (!u || !u.id) return;
-      window.UsuarioActual = u;
-      construirMenu(u);
-      if (typeof iniciarProtectorInactividad === 'function') {
-        iniciarProtectorInactividad(function () {
-          cerrarSesion();
-        }, 5 * 60 * 1000);
-      }
-    } catch (e) {}
+    if (typeof verificarSesionInactividad === 'function' && verificarSesionInactividad(5 * 60 * 1000)) return;
+
+    const token = _getTokenLogin_();
+    if (!token) return;
+
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (!r || r.exito === false) return;
+        try {
+          sessionStorage.setItem('ip_usuario', JSON.stringify(r.usuario || {}));
+          sessionStorage.setItem('ip_lastActivity', String(Date.now()));
+        } catch (e) {}
+        window.UsuarioActual = r.usuario;
+        construirMenu(r.usuario);
+        if (typeof iniciarProtectorInactividad === 'function') {
+          iniciarProtectorInactividad(function () {
+            cerrarSesion();
+          }, 5 * 60 * 1000);
+        }
+      })
+      .withFailureHandler(function () {})
+      .obtenerSesionActual(token);
   });
 </script>

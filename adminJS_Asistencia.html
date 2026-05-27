@@ -8,6 +8,12 @@
   };
 
   function cargarAsistenciaAdmin() {
+    const token = (typeof obtenerTokenSesion === 'function') ? obtenerTokenSesion() : '';
+    if (!token) {
+      alert('Sesión expirada. Vuelve a iniciar sesión.');
+      if (window.APP_URL) window.location.href = window.APP_URL;
+      return;
+    }
     google.script.run
       .withSuccessHandler(function (registros) {
         AppAsistencia.registrosOriginales = Array.isArray(registros) ? registros : [];
@@ -20,8 +26,11 @@
       })
       .withFailureHandler(function (e) {
         alert((e && e.message) ? e.message : 'Error cargando asistencia.');
+        if (e && e.message && String(e.message).toLowerCase().indexOf('sesión') !== -1) {
+          if (window.APP_URL) window.location.href = window.APP_URL;
+        }
       })
-      .obtenerRegistrosAsistenciaAdmin();
+      .obtenerRegistrosAsistenciaAdmin(token);
   }
 
   function aplicarFiltrosAsistencia() {

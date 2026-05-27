@@ -1,4 +1,5 @@
-function obtenerRegistrosAsistenciaAdmin() {
+function obtenerRegistrosAsistenciaAdmin(tokenInput) {
+  _requireAdmin_(tokenInput);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Registro_Asistencia');
   if (!sheet) return [];

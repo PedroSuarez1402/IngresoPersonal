@@ -11,12 +11,15 @@
 
   function touchActividad() {
     try {
-      localStorage.setItem('sesionIngresoPersonal_lastActivity', String(Date.now()));
+      sessionStorage.setItem('ip_lastActivity', String(Date.now()));
     } catch (e) {}
   }
 
   function limpiarSesionLocal() {
     try {
+      sessionStorage.removeItem('ip_token');
+      sessionStorage.removeItem('ip_usuario');
+      sessionStorage.removeItem('ip_lastActivity');
       localStorage.removeItem('sesionIngresoPersonal');
       localStorage.removeItem('sesionIngresoPersonal_lastActivity');
     } catch (e) {}
@@ -25,13 +28,13 @@
   function verificarSesionInactividad(timeoutMs) {
     var t = (timeoutMs == null) ? (5 * 60 * 1000) : Number(timeoutMs);
     if (!t || isNaN(t)) t = 5 * 60 * 1000;
-    var rawSesion = null;
+    var rawToken = null;
     var rawAct = null;
     try {
-      rawSesion = localStorage.getItem('sesionIngresoPersonal');
-      rawAct = localStorage.getItem('sesionIngresoPersonal_lastActivity');
+      rawToken = sessionStorage.getItem('ip_token');
+      rawAct = sessionStorage.getItem('ip_lastActivity');
     } catch (e) {}
-    if (!rawSesion) return false;
+    if (!rawToken) return false;
     var last = Number(rawAct || '0');
     if (!last || isNaN(last)) {
       limpiarSesionLocal();
@@ -42,6 +45,14 @@
       return true;
     }
     return false;
+  }
+
+  function obtenerTokenSesion() {
+    try {
+      return sessionStorage.getItem('ip_token') || '';
+    } catch (e) {
+      return '';
+    }
   }
 
   function iniciarProtectorInactividad(onTimeout, timeoutMs) {

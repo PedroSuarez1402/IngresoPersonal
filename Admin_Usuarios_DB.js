@@ -1,4 +1,5 @@
-function obtenerUsuariosAdmin() {
+function obtenerUsuariosAdmin(tokenInput) {
+  _requireAdmin_(tokenInput);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Base_Usuarios');
   if (!sheet) return [];
@@ -20,7 +21,8 @@ function obtenerUsuariosAdmin() {
   });
 }
 
-function guardarUsuarioAdmin(datos) {
+function guardarUsuarioAdmin(tokenInput, datos) {
+  _requireAdmin_(tokenInput);
   const d = datos || {};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Base_Usuarios');
@@ -65,7 +67,8 @@ function guardarUsuarioAdmin(datos) {
   return { exito: true, id: id };
 }
 
-function cambiarEstadoUsuarioAdmin(idUsuario, nuevoEstado) {
+function cambiarEstadoUsuarioAdmin(tokenInput, idUsuario, nuevoEstado) {
+  _requireAdmin_(tokenInput);
   const id = _usrAdmin_toStr_(idUsuario);
   const estadoIn = _usrAdmin_toStr_(nuevoEstado);
   if (!id) throw new Error('ID de usuario inválido.');

@@ -6,6 +6,12 @@
   };
 
   function cargarConfigAdmin() {
+    const token = (typeof obtenerTokenSesion === 'function') ? obtenerTokenSesion() : '';
+    if (!token) {
+      alert('Sesión expirada. Vuelve a iniciar sesión.');
+      if (window.APP_URL) window.location.href = window.APP_URL;
+      return;
+    }
     google.script.run
       .withSuccessHandler(function (reglas) {
         AppConfig.reglas = Array.isArray(reglas) ? reglas : [];
@@ -15,8 +21,11 @@
       })
       .withFailureHandler(function (e) {
         alert((e && e.message) ? e.message : 'Error cargando configuración.');
+        if (e && e.message && String(e.message).toLowerCase().indexOf('sesión') !== -1) {
+          if (window.APP_URL) window.location.href = window.APP_URL;
+        }
       })
-      .obtenerConfiguracionesAdmin();
+      .obtenerConfiguracionesAdmin(token);
   }
 
   function renderTablaConfigAdmin() {
@@ -158,6 +167,17 @@
       btnGuardar.textContent = 'Guardando...';
     }
 
+    const token = (typeof obtenerTokenSesion === 'function') ? obtenerTokenSesion() : '';
+    if (!token) {
+      alert('Sesión expirada. Vuelve a iniciar sesión.');
+      if (btnGuardar) {
+        btnGuardar.disabled = false;
+        btnGuardar.textContent = 'Guardar';
+      }
+      if (window.APP_URL) window.location.href = window.APP_URL;
+      return;
+    }
+
     google.script.run
       .withSuccessHandler(function (res) {
         if (!res || res.exito === false) {
@@ -179,8 +199,11 @@
           btnGuardar.textContent = 'Guardar';
         }
         alert((err && err.message) ? err.message : 'Error guardando configuración.');
+        if (err && err.message && String(err.message).toLowerCase().indexOf('sesión') !== -1) {
+          if (window.APP_URL) window.location.href = window.APP_URL;
+        }
       })
-      .guardarConfiguracionAdmin(datos);
+      .guardarConfiguracionAdmin(token, datos);
   }
 
   function _normTimeHHMM_(s) {

@@ -4,6 +4,10 @@ function validarAccesoUsuario(correoInput, passwordInput) {
   const passwordBuscada = (passwordInput == null) ? '' : String(passwordInput);
   if (!correoBuscado || !passwordBuscada) return { exito: false, mensaje: mensaje };
 
+  if (correoBuscado.indexOf('@anscomunicaciones.com.co') === -1 || !/@anscomunicaciones\.com\.co$/.test(correoBuscado)) {
+    return { exito: false, mensaje: 'Debes ingresar con tu correo corporativo.' };
+  }
+
   const usuarios = _auth_getUsuariosCached_();
   for (let i = 0; i < usuarios.length; i++) {
     const u = usuarios[i] || {};
@@ -16,15 +20,16 @@ function validarAccesoUsuario(correoInput, passwordInput) {
     const passwordReal = (u.password == null) ? '' : String(u.password);
     if (passwordReal !== passwordBuscada) return { exito: false, mensaje: mensaje };
 
-    return { exito: true, usuario: {
+    const usuario = {
       id: (u.id == null) ? '' : String(u.id).trim(),
       correo: (u.correo == null) ? '' : String(u.correo).trim(),
       nombre: (u.nombre == null) ? '' : String(u.nombre).trim(),
-      identificacion: (u.identificacion == null) ? '' : String(u.identificacion).trim(),
       cargo: (u.cargo == null) ? '' : String(u.cargo).trim(),
       rol_id: (u.rol_id == null) ? '' : String(u.rol_id).trim(),
       estado: (u.estado == null) ? '' : String(u.estado).trim()
-    } };
+    };
+    const token = _crearSesion_(usuario);
+    return { exito: true, token: token, usuario: usuario };
   }
 
   return { exito: false, mensaje: mensaje };

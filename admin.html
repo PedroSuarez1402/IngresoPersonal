@@ -97,33 +97,40 @@
           return;
         }
 
-        try {
-          const raw = localStorage.getItem('sesionIngresoPersonal');
-          const u = raw ? JSON.parse(raw) : null;
-          const rol = (u && u.rol_id != null) ? u.rol_id : '';
-          const rolNum = parseInt(rol, 10);
-          if (!(rol === '2' || rolNum === 2)) {
-            redirigirAInicio();
-            return;
-          }
-        } catch (e) {
+        const token = (typeof obtenerTokenSesion === 'function') ? obtenerTokenSesion() : '';
+        if (!token) {
           redirigirAInicio();
           return;
         }
 
-        const loading = document.getElementById('admin_loading');
-        const app = document.getElementById('admin_app');
-        if (loading) loading.classList.add('d-none');
-        if (app) app.classList.remove('d-none');
+        google.script.run
+          .withSuccessHandler(function (res) {
+            const u = res && res.exito ? res.usuario : null;
+            const rol = (u && u.rol_id != null) ? String(u.rol_id).trim() : '';
+            const rolNum = parseInt(rol, 10);
+            if (!(rol === '2' || rolNum === 2)) {
+              redirigirAInicio();
+              return;
+            }
 
-        if (typeof touchActividad === 'function') touchActividad();
-        if (typeof iniciarProtectorInactividad === 'function') {
-          iniciarProtectorInactividad(function () {
+            const loading = document.getElementById('admin_loading');
+            const app = document.getElementById('admin_app');
+            if (loading) loading.classList.add('d-none');
+            if (app) app.classList.remove('d-none');
+
+            if (typeof touchActividad === 'function') touchActividad();
+            if (typeof iniciarProtectorInactividad === 'function') {
+              iniciarProtectorInactividad(function () {
+                redirigirAInicio();
+              }, 5 * 60 * 1000);
+            }
+
+            mostrarSeccionAdmin('sec_asistencia');
+          })
+          .withFailureHandler(function () {
             redirigirAInicio();
-          }, 5 * 60 * 1000);
-        }
-
-        mostrarSeccionAdmin('sec_asistencia');
+          })
+          .obtenerSesionActual(token);
       });
     </script>
   </body>

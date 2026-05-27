@@ -1,11 +1,12 @@
-function registrarAsistenciaManual(idUsuarioInput, nombreUsuarioInput, tipoMarcacionInput) {
-  const idUsuario = (idUsuarioInput == null) ? '' : String(idUsuarioInput).trim();
-  const nombreUsuario = (nombreUsuarioInput == null) ? '' : String(nombreUsuarioInput).trim();
+function registrarAsistenciaManual(tokenInput, tipoMarcacionInput) {
+  const token = (tokenInput == null) ? '' : String(tokenInput).trim();
   const tipoMarcacion = (tipoMarcacionInput == null) ? '' : String(tipoMarcacionInput).trim();
+  if (!token || !tipoMarcacion) return { exito: false, mensaje: 'Datos incompletos para registrar.' };
 
-  if (!idUsuario || !nombreUsuario || !tipoMarcacion) {
-    return { exito: false, mensaje: 'Datos incompletos para registrar.' };
-  }
+  const ses = _requireSesion_(token);
+  const idUsuario = (ses.id == null) ? '' : String(ses.id).trim();
+  const nombreUsuario = (ses.nombre == null) ? '' : String(ses.nombre).trim();
+  if (!idUsuario || !nombreUsuario) return { exito: false, mensaje: 'Sesión inválida.' };
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shAsis = ss.getSheetByName('Registro_Asistencia');
@@ -16,6 +17,24 @@ function registrarAsistenciaManual(idUsuarioInput, nombreUsuarioInput, tipoMarca
   const fecha = Utilities.formatDate(now, tz, 'dd/MM/yyyy');
   const horaExactaStr = Utilities.formatDate(now, 'America/Bogota', 'HH:mm:ss');
   const minutosAhora = _minutesBogota_(now);
+
+  const estadoObj = _obtenerEstadoUsuarioHoyPorId_(idUsuario, shAsis, tz, fecha);
+  const estado = (estadoObj && estadoObj.estado) ? String(estadoObj.estado) : 'Ninguno';
+  const esSalida = tipoMarcacion.indexOf('Salida') === 0;
+
+  if (estado === 'Terminado') {
+    return { exito: false, mensaje: 'Error: Ya registraste tu "Salida Final" hoy.' };
+  }
+  if (tipoMarcacion === 'Ingreso') {
+    if (estado !== 'Ninguno') return { exito: false, mensaje: 'Error: Ya registraste tu Ingreso hoy.' };
+  } else if (tipoMarcacion === 'Reingreso') {
+    if (estado === 'Ninguno') return { exito: false, mensaje: 'Error: Debes registrar tu Ingreso primero.' };
+    if (estado === 'Adentro') return { exito: false, mensaje: 'Error: Ya te encuentras dentro de las instalaciones.' };
+    if (estado !== 'Afuera') return { exito: false, mensaje: 'Error: No es posible registrar "Reingreso" en este momento.' };
+  } else if (esSalida) {
+    if (estado === 'Ninguno') return { exito: false, mensaje: 'Error: Debes registrar tu Ingreso primero.' };
+    if (estado === 'Afuera') return { exito: false, mensaje: 'Error: Para registrar una salida primero debes registrar tu "Reingreso".' };
+  }
 
   if (tipoMarcacion === 'Salida Final' && minutosAhora !== null && minutosAhora < (17 * 60 + 30)) {
     return { exito: false, mensaje: 'Antes de las 5:30 PM no puedes registrar "Salida Final". Si necesitas salir, selecciona "Salida por Permiso".' };
@@ -32,26 +51,57 @@ function registrarAsistenciaManual(idUsuarioInput, nombreUsuarioInput, tipoMarca
     }
   }
 
-  if (tipoMarcacion === 'Ingreso') {
-    if (_existeMarcacionHoy_(shAsis, fecha, idUsuario, tipoMarcacion, tz)) {
-      return { exito: false, mensaje: 'Ya registraste tu ingreso hoy.' };
-    }
-  } else if (tipoMarcacion === 'Reingreso') {
-    const okReingreso = _puedeRegistrarReingresoHoy_(shAsis, fecha, idUsuario, tz);
-    if (!okReingreso) {
-      return { exito: false, mensaje: 'Para registrar "Reingreso" primero debes registrar una salida válida ("Salida Almuerzo" o "Salida por Permiso").' };
-    }
-  } else {
-    if (_existeMarcacionHoy_(shAsis, fecha, idUsuario, tipoMarcacion, tz)) {
-      return { exito: false, mensaje: 'Ya existe una marcación para hoy con ese tipo.' };
-    }
-  }
-
   const categoria = _calcularCategoriaMarcacion_(ss, now, tipoMarcacion);
   const idRegistro = _generarIdRegistroAsistencia_(shAsis);
 
   shAsis.appendRow([idRegistro, fecha, "'" + horaExactaStr, idUsuario, nombreUsuario, tipoMarcacion, categoria]);
   return { exito: true, mensaje: 'Marcación registrada: ' + tipoMarcacion + ' (' + categoria + ').' };
+}
+
+function obtenerEstadoUsuarioHoy(tokenInput) {
+  const token = (tokenInput == null) ? '' : String(tokenInput).trim();
+  if (!token) return { estado: 'Ninguno' };
+
+  const ses = _requireSesion_(token);
+  const idUsuario = (ses.id == null) ? '' : String(ses.id).trim();
+  if (!idUsuario) return { estado: 'Ninguno' };
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Registro_Asistencia');
+  if (!sheet) return { estado: 'Ninguno' };
+
+  const tz = ss.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
+  const hoy = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy');
+  return _obtenerEstadoUsuarioHoyPorId_(idUsuario, sheet, tz, hoy);
+}
+
+function _obtenerEstadoUsuarioHoyPorId_(idUsuario, sheet, tz, hoy) {
+  const uidBuscado = (idUsuario == null) ? '' : String(idUsuario).trim();
+  if (!uidBuscado || !sheet) return { estado: 'Ninguno' };
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { estado: 'Ninguno' };
+
+  const numRows = Math.min(lastRow - 1, 300);
+  const startRow = lastRow - numRows + 1;
+  const data = sheet.getRange(startRow, 1, numRows, 6).getValues();
+
+  for (let i = data.length - 1; i >= 0; i--) {
+    const r = data[i] || [];
+    const f = _normalizarFechaDDMMYYYY_(r[1], tz);
+    if (f !== hoy) break;
+
+    const uid = (r[3] == null) ? '' : String(r[3]).trim();
+    if (uid !== uidBuscado) continue;
+
+    const tipo = (r[5] == null) ? '' : String(r[5]).trim().toLowerCase();
+    if (tipo === 'ingreso' || tipo === 'reingreso') return { estado: 'Adentro' };
+    if (tipo === 'salida almuerzo' || tipo === 'salida por permiso') return { estado: 'Afuera' };
+    if (tipo === 'salida final') return { estado: 'Terminado' };
+    return { estado: 'Ninguno' };
+  }
+
+  return { estado: 'Ninguno' };
 }
 
 function _existeMarcacionHoy_(sheet, fechaDDMMYYYY, idUsuario, tipoMarcacion, tz) {

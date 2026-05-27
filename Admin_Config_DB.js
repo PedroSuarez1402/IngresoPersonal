@@ -1,4 +1,5 @@
-function obtenerConfiguracionesAdmin() {
+function obtenerConfiguracionesAdmin(tokenInput) {
+  _requireAdmin_(tokenInput);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Config_Horarios');
   if (!sheet) return [];
@@ -21,7 +22,8 @@ function obtenerConfiguracionesAdmin() {
   });
 }
 
-function guardarConfiguracionAdmin(datos) {
+function guardarConfiguracionAdmin(tokenInput, datos) {
+  _requireAdmin_(tokenInput);
   try {
     const payload = datos || {};
     const ss = SpreadsheetApp.getActiveSpreadsheet();
