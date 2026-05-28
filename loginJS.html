@@ -83,15 +83,23 @@
       btn.textContent = 'Validando...';
     }
 
+    let remember = false;
     try {
       const chk = document.getElementById('login_recordar');
-      const remember = !!(chk && chk.checked);
-      if (remember) {
-        localStorage.setItem('ip_remember_email', correo);
-      } else {
-        localStorage.removeItem('ip_remember_email');
-      }
+      remember = !!(chk && chk.checked);
     } catch (e) {}
+
+    window.__ip_login_remember = remember;
+    window.__ip_login_correo_tmp = correo;
+    window.__ip_login_pass_tmp = pass;
+
+    if (!remember) {
+      try {
+        localStorage.removeItem('ip_remember_email');
+        sessionStorage.removeItem('ip_remember_pass');
+        sessionStorage.removeItem('ip_remember_flag');
+      } catch (e) {}
+    }
 
     google.script.run
       .withSuccessHandler(respuestaLogin)
@@ -124,13 +132,33 @@
         err.textContent = (res && res.mensaje) ? res.mensaje : 'Error al validar.';
         err.classList.remove('d-none');
       }
+      try {
+        window.__ip_login_correo_tmp = '';
+        window.__ip_login_pass_tmp = '';
+        window.__ip_login_remember = false;
+      } catch (e) {}
       return;
     }
+
+    try {
+      const remember = !!window.__ip_login_remember;
+      if (remember) {
+        if (window.__ip_login_correo_tmp) localStorage.setItem('ip_remember_email', String(window.__ip_login_correo_tmp));
+        if (window.__ip_login_pass_tmp) sessionStorage.setItem('ip_remember_pass', String(window.__ip_login_pass_tmp));
+        sessionStorage.setItem('ip_remember_flag', '1');
+      }
+    } catch (e) {}
 
     try {
       sessionStorage.setItem('ip_token', String(res.token || ''));
       sessionStorage.setItem('ip_usuario', JSON.stringify(res.usuario || {}));
       sessionStorage.setItem('ip_lastActivity', String(Date.now()));
+    } catch (e) {}
+
+    try {
+      window.__ip_login_correo_tmp = '';
+      window.__ip_login_pass_tmp = '';
+      window.__ip_login_remember = false;
     } catch (e) {}
 
     window.UsuarioActual = res.usuario;
@@ -169,6 +197,28 @@
       const remembered = localStorage.getItem('ip_remember_email');
       const correoEl = document.getElementById('login_correo');
       if (remembered && correoEl && !correoEl.value) correoEl.value = String(remembered);
+    } catch (e) {}
+
+    try {
+      const chk = document.getElementById('login_recordar');
+      const flag = sessionStorage.getItem('ip_remember_flag');
+      const shouldRemember = !!(localStorage.getItem('ip_remember_email') || flag === '1');
+      if (chk) chk.checked = shouldRemember;
+
+      const passRemember = sessionStorage.getItem('ip_remember_pass');
+      const passEl2 = document.getElementById('login_pass');
+      if (flag === '1' && passRemember && passEl2 && !passEl2.value) passEl2.value = String(passRemember);
+
+      if (chk) {
+        chk.addEventListener('change', function () {
+          if (chk.checked) return;
+          try {
+            localStorage.removeItem('ip_remember_email');
+            sessionStorage.removeItem('ip_remember_pass');
+            sessionStorage.removeItem('ip_remember_flag');
+          } catch (e) {}
+        });
+      }
     } catch (e) {}
 
     if (typeof verificarSesionInactividad === 'function' && verificarSesionInactividad(5 * 60 * 1000)) return;
