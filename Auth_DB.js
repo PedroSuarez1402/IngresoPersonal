@@ -4,10 +4,6 @@ function validarAccesoUsuario(correoInput, passwordInput) {
   const passwordBuscada = (passwordInput == null) ? '' : String(passwordInput);
   if (!correoBuscado || !passwordBuscada) return { exito: false, mensaje: mensaje };
 
-  if (correoBuscado.indexOf('@anscomunicaciones.com.co') === -1 || !/@anscomunicaciones\.com\.co$/.test(correoBuscado)) {
-    return { exito: false, mensaje: 'Debes ingresar con tu correo corporativo.' };
-  }
-
   const usuarios = _auth_getUsuariosCached_();
   for (let i = 0; i < usuarios.length; i++) {
     const u = usuarios[i] || {};
